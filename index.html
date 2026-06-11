@@ -93,11 +93,11 @@
 
             const lowerUser = user.toLowerCase();
 
-            // Detectar se o login é de administrador
-            const isAdminEmail = lowerUser === 'admin' || lowerUser === 'admin@goianita.com.br' || 
-                                 lowerUser === 'cleber.ihs@gmail.com' || 
-                                 lowerUser === 'eduard' || lowerUser === 'eduardfreitasg@gmail.com' || 
-                                 lowerUser === 'debora' || lowerUser === 'debora@goianita.com.br';
+            // Detectar se o login é de administrador (qualquer e-mail ou atalhos)
+            const isAdminEmail = lowerUser.includes('@') || 
+                                 lowerUser === 'admin' || 
+                                 lowerUser === 'eduard' || 
+                                 lowerUser === 'debora';
             
             if (isAdminEmail) {
                 let adminEmail = lowerUser;
