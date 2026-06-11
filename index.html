@@ -89,24 +89,51 @@
             e.preventDefault();
             const user = document.getElementById('username').value.trim();
             const pass = document.getElementById('password').value.trim();
+            const btnSubmit = document.querySelector('button[type="submit"]');
+
+            // Detectar se o login é de administrador
+            const isAdminEmail = user === 'admin' || user === 'admin@goianita.com.br' || user === 'cleber.ihs@gmail.com';
             
-            // Login Admin
-            if (user === 'admin' && pass === 'goianita123') {
-                sessionStorage.setItem('goianita_role', 'admin');
-                sessionStorage.removeItem('goianita_cliente_id');
-                window.location.href = 'dashboard.html';
+            if (isAdminEmail) {
+                const adminEmail = user === 'admin' ? 'admin@goianita.com.br' : user;
+                
+                if (typeof firebase === 'undefined' || !window.GoianitaAuth) {
+                    // Fallback local se estiver offline
+                    if (pass === 'goianita123') {
+                        sessionStorage.setItem('goianita_role', 'admin');
+                        sessionStorage.removeItem('goianita_cliente_id');
+                        window.location.href = 'dashboard.html';
+                    } else {
+                        alert('Senha incorreta (fallback offline).');
+                    }
+                    return;
+                }
+
+                btnSubmit.disabled = true;
+                btnSubmit.textContent = 'Autenticando Admin...';
+
+                window.GoianitaAuth.signInWithEmailAndPassword(adminEmail, pass)
+                    .then(() => {
+                        sessionStorage.setItem('goianita_role', 'admin');
+                        sessionStorage.removeItem('goianita_cliente_id');
+                        window.location.href = 'dashboard.html';
+                    })
+                    .catch(error => {
+                        alert('Falha no login do Administrador: E-mail ou senha incorretos.\n\nDetalhes: ' + error.message);
+                        btnSubmit.disabled = false;
+                        btnSubmit.textContent = 'Entrar no Sistema';
+                    });
                 return;
             }
             
             // Login Cliente (CPF)
             const cleanCpf = user.replace(/\D/g, '');
             if (!cleanCpf) {
-                alert('Por favor, digite um CPF válido para acesso.');
+                alert('Por favor, insira o usuário (CPF para clientes ou E-mail para administradores).');
                 return;
             }
             
             const email = cleanCpf + '@goianita.com.br';
-            const btnSubmit = document.querySelector('button[type="submit"]');
             
             if (typeof firebase === 'undefined' || !window.GoianitaAuth) {
                 // Fallback local se estiver sem Firebase carregado
@@ -118,7 +145,7 @@
                     sessionStorage.setItem('goianita_cliente_id', clienteEncontrado.id);
                     window.location.href = 'pages/cliente-detalhe.html?id=' + clienteEncontrado.id;
                 } else {
-                    alert('Credenciais incorretas ou CPF não localizado.');
+                    alert('CPF não cadastrado.');
                 }
                 return;
             }
