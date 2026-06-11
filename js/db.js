@@ -526,7 +526,7 @@ const db = {
                     email: mapping.email !== -1 ? cols[mapping.email] : '',
                     chavePixType: mapping.chavePixType !== -1 ? cols[mapping.chavePixType] : 'CPF',
                     chavePix: mapping.chavePix !== -1 ? cols[mapping.chavePix] : cpf,
-                    comissaoPadrao: mapping.comissaoPadrao !== -1 && cols[mapping.comissaoPadrao] ? parseFloat(cols[mapping.comissaoPadrao].replace('%','').replace(',','.')) : 20
+                    comissaoPadrao: mapping.comissaoPadrao !== -1 && cols[mapping.comissaoPadrao] ? parseFloat(cols[mapping.comissaoPadrao].replace('%','').replace(',','.')) : 50
                 };
                 
                 db.clientes.save(cliente);

@@ -179,7 +179,7 @@
                             email: userCredential.user.email,
                             chavePixType: "CPF",
                             chavePix: user,
-                            comissaoPadrao: 20
+                            comissaoPadrao: 50
                         };
                         window.GoianitaDB.clientes.save(basicCliente).then(saved => {
                             sessionStorage.setItem('goianita_role', 'user');

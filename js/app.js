@@ -225,7 +225,7 @@ function renderClientesList() {
                 email: document.getElementById('cli-email').value,
                 chavePixType: document.getElementById('cli-pix-type').value,
                 chavePix: document.getElementById('cli-pix').value,
-                comissaoPadrao: parseFloat(document.getElementById('cli-comissao').value) || 20,
+                comissaoPadrao: parseFloat(document.getElementById('cli-comissao').value) || 50,
                 senha: document.getElementById('cli-senha').value || 'goianita123'
             };
             
@@ -455,7 +455,7 @@ function renderProdutoNovo() {
             e.preventDefault();
             
             const precoVenda = parseFloat(document.getElementById('prod-preco').value);
-            const comissao = parseFloat(document.getElementById('prod-comissao').value) || 20;
+            const comissao = parseFloat(document.getElementById('prod-comissao').value) || 50;
             
             const novoProduto = {
                 nome: document.getElementById('prod-nome').value,
