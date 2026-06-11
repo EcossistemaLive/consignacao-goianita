@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Financeiro - Goianita Novo de novo</title>
+    <!-- Firebase SDKs -->
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
+    <link rel="stylesheet" href="../css/style.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body>
+    <div class="app-container">
+        <!-- Sidebar Navigation -->
+        <aside class="sidebar">
+            <div class="logo-container">
+                <img src="../logo.png" alt="Logo Goianita" />
+                <div>
+                    <span class="logo-text">Goianita Novo de novo</span>
+                    <span class="logo-sub">Consignações</span>
+                </div>
+            </div>
+            
+            <nav>
+                <ul class="nav-menu">
+                    <li class="nav-item">
+                        <a href="../dashboard.html">
+                            <i class="fa-solid fa-chart-line"></i> Dashboard
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a href="clientes.html">
+                            <i class="fa-solid fa-users"></i> Clientes / Fornecedores
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a href="produtos.html">
+                            <i class="fa-solid fa-box-open"></i> Produtos Consignados
+                        </a>
+                    </li>
+                    <li class="nav-item active">
+                        <a href="financeiro.html">
+                            <i class="fa-solid fa-wallet"></i> Financeiro / Repasses
+                        </a>
+                    </li>
+                </ul>
+            </nav>
+            
+            <div class="sidebar-footer">
+                <div class="user-badge">
+                    <div class="user-avatar">CL</div>
+                    <div class="user-info">
+                        <span class="user-name">Cleber</span>
+                        <span class="user-role">Administrador</span>
+                    </div>
+                </div>
+            </div>
+        </aside>
+
+        <!-- Main Content Area -->
+        <main class="main-content">
+            <header class="page-header">
+                <div>
+                    <h1 class="page-title">Financeiro & Repasses</h1>
+                    <p class="page-subtitle">Acompanhamento de fluxo de caixa, comissão de vendas e repasses pendentes via PIX.</p>
+                </div>
+                <div style="display: flex; gap: 12px;">
+                    <button id="btn-zerar-dados" class="btn btn-secondary" style="border-color: var(--status-devolucao); color: var(--status-devolucao);">
+                        <i class="fa-solid fa-trash-can"></i> Zerar Cadastros
+                    </button>
+                    <button id="btn-export-backup" class="btn btn-secondary">
+                        <i class="fa-solid fa-download"></i> Exportar JSON
+                    </button>
+                    <label for="backup-file-input" class="btn btn-primary" style="margin: 0; cursor: pointer;">
+                        <i class="fa-solid fa-upload"></i> Importar JSON
+                    </label>
+                    <input type="file" id="backup-file-input" style="display: none;" accept=".json">
+                </div>
+            </header>
+
+            <!-- Resumo Financeiro -->
+            <section class="card-grid" style="grid-template-columns: repeat(4, 1fr);">
+                <div class="kpi-card">
+                    <div class="kpi-title">Faturamento Total</div>
+                    <div class="kpi-value" id="fin-total-vendas">R$ 0,00</div>
+                    <div class="kpi-desc">Valor bruto total vendido</div>
+                </div>
+                <div class="kpi-card" style="border-left: 4px solid var(--accent-gold);">
+                    <div class="kpi-title">Comissão Goianita</div>
+                    <div class="kpi-value" id="fin-total-comissao">R$ 0,00</div>
+                    <div class="kpi-desc">Receita retida acumulada</div>
+                </div>
+                <div class="kpi-card" style="border-left: 4px solid var(--status-pago);">
+                    <div class="kpi-title">Repasses Pagos</div>
+                    <div class="kpi-value" id="fin-total-pago">R$ 0,00</div>
+                    <div class="kpi-desc">Total transferido aos clientes</div>
+                </div>
+                <div class="kpi-card" style="border-left: 4px solid var(--status-devolucao);">
+                    <div class="kpi-title">Repasses Pendentes</div>
+                    <div class="kpi-value" id="fin-total-pendente">R$ 0,00</div>
+                    <div class="kpi-desc">Saldo aguardando PIX</div>
+                </div>
+            </section>
+
+            <!-- Tabela Balanço Geral de Clientes -->
+            <div class="table-container">
+                <div class="table-header-bar">
+                    <h3>Balanço por Cliente Fornecedor</h3>
+                </div>
+                <table class="premium-table">
+                    <thead>
+                        <tr>
+                            <th>Fornecedor</th>
+                            <th>Dados PIX</th>
+                            <th>Total Devido</th>
+                            <th>Total Pago</th>
+                            <th>Saldo a Pagar</th>
+                            <th>Ações</th>
+                        </tr>
+                    </thead>
+                    <tbody id="fin-fornecedores-table">
+                        <!-- Populado dinamicamente -->
+                    </tbody>
+                </table>
+            </div>
+        </main>
+    </div>
+
+    <!-- Scripts de dados e controle -->
+    <script src="../js/db.js"></script>
+    <script src="../js/app.js"></script>
+</body>
+</html>

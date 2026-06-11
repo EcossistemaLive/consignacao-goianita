@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Clientes Fornecedores - Goianita Novo de novo</title>
+    <!-- Firebase SDKs -->
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
+    <link rel="stylesheet" href="../css/style.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body>
+    <div class="app-container">
+        <!-- Sidebar Navigation -->
+        <aside class="sidebar">
+            <div class="logo-container">
+                <img src="../logo.png" alt="Logo Goianita" />
+                <div>
+                    <span class="logo-text">Goianita Novo de novo</span>
+                    <span class="logo-sub">Consignações</span>
+                </div>
+            </div>
+            
+            <nav>
+                <ul class="nav-menu">
+                    <li class="nav-item">
+                        <a href="../dashboard.html">
+                            <i class="fa-solid fa-chart-line"></i> Dashboard
+                        </a>
+                    </li>
+                    <li class="nav-item active">
+                        <a href="clientes.html">
+                            <i class="fa-solid fa-users"></i> Clientes / Fornecedores
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a href="produtos.html">
+                            <i class="fa-solid fa-box-open"></i> Produtos Consignados
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a href="financeiro.html">
+                            <i class="fa-solid fa-wallet"></i> Financeiro / Repasses
+                        </a>
+                    </li>
+                </ul>
+            </nav>
+            
+            <div class="sidebar-footer">
+                <div class="user-badge">
+                    <div class="user-avatar">CL</div>
+                    <div class="user-info">
+                        <span class="user-name">Cleber</span>
+                        <span class="user-role">Administrador</span>
+                    </div>
+                </div>
+            </div>
+        </aside>
+
+        <!-- Main Content Area -->
+        <main class="main-content">
+            <header class="page-header">
+                <div>
+                    <h1 class="page-title">Clientes / Fornecedores</h1>
+                    <p class="page-subtitle">Gerenciamento de proprietários de itens consignados e chaves de pagamento PIX.</p>
+                </div>
+                <div style="display: flex; gap: 12px;">
+                    <button id="btn-import-clientes-trigger" class="btn btn-secondary" onclick="document.getElementById('modal-import-clientes').style.display='flex'">
+                        <i class="fa-solid fa-file-import"></i> Importar Planilha
+                    </button>
+                    <button id="btn-novo-cliente-trigger" class="btn btn-primary" onclick="document.getElementById('modal-novo-cliente').style.display='flex'">
+                        <i class="fa-solid fa-plus"></i> Novo Cliente
+                    </button>
+                </div>
+            </header>
+
+            <!-- Filtros de Busca -->
+            <div class="filter-panel">
+                <input type="text" id="search-clientes" class="search-input" placeholder="Pesquisar por nome, CPF ou email do cliente...">
+            </div>
+
+            <!-- Tabela de Clientes -->
+            <div class="table-container">
+                <div class="table-header-bar">
+                    <h3>Lista de Fornecedores Cadastrados</h3>
+                </div>
+                <table class="premium-table">
+                    <thead>
+                        <tr>
+                            <th>Nome</th>
+                            <th>CPF</th>
+                            <th>Telefone</th>
+                            <th>Produtos</th>
+                            <th>Saldo Pendente</th>
+                            <th>Ações</th>
+                        </tr>
+                    </thead>
+                    <tbody id="clientes-table-body">
+                        <!-- Populado dinamicamente -->
+                    </tbody>
+                </table>
+            </div>
+        </main>
+    </div>
+
+    <!-- Modal Novo Cliente (Popup Simplificado para o MVP) -->
+    <div id="modal-novo-cliente" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000; align-items: center; justify-content: center; padding: 20px;">
+        <div class="form-card" style="width: 100%; max-width: 600px;">
+            <div class="page-header" style="margin-bottom: 24px;">
+                <h3>Cadastrar Novo Cliente Fornecedor</h3>
+                <button onclick="document.getElementById('modal-novo-cliente').style.display='none'" class="btn btn-secondary" style="padding: 6px 12px;">X</button>
+            </div>
+            
+            <form id="cliente-form" class="form-grid">
+                <div class="form-group full-width">
+                    <label class="form-label" for="cli-nome">Nome Completo</label>
+                    <input type="text" id="cli-nome" class="form-control" required placeholder="Digite o nome completo do cliente">
+                </div>
+                <div class="form-group">
+                    <label class="form-label" for="cli-cpf">CPF</label>
+                    <input type="text" id="cli-cpf" class="form-control" required placeholder="000.000.000-00">
+                </div>
+                <div class="form-group">
+                    <label class="form-label" for="cli-tel">Telefone / Whatsapp</label>
+                    <input type="text" id="cli-tel" class="form-control" required placeholder="(62) 99999-9999">
+                </div>
+                <div class="form-group full-width">
+                    <label class="form-label" for="cli-email">E-mail</label>
+                    <input type="email" id="cli-email" class="form-control" required placeholder="exemplo@gmail.com">
+                </div>
+                <div class="form-group">
+                    <label class="form-label" for="cli-pix-type">Tipo de Chave PIX</label>
+                    <select id="cli-pix-type" class="filter-select" style="width: 100%;">
+                        <option value="CPF">CPF</option>
+                        <option value="Celular">Celular</option>
+                        <option value="Email">E-mail</option>
+                        <option value="Chave Aleatória">Chave Aleatória</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label class="form-label" for="cli-pix">Chave PIX</label>
+                    <input type="text" id="cli-pix" class="form-control" required placeholder="Digite a chave PIX">
+                </div>
+                <div class="form-group">
+                    <label class="form-label" for="cli-comissao">Taxa de Comissão Padrão (%)</label>
+                    <input type="number" id="cli-comissao" class="form-control" value="20" placeholder="Ex: 20">
+                </div>
+                <div class="form-group">
+                    <label class="form-label" for="cli-senha">Senha de Acesso do Cliente</label>
+                    <input type="password" id="cli-senha" class="form-control" value="goianita123" placeholder="Senha para login do cliente">
+                </div>
+                
+                <div class="form-actions full-width" style="grid-column: span 2;">
+                    <button type="button" onclick="document.getElementById('modal-novo-cliente').style.display='none'" class="btn btn-secondary">Cancelar</button>
+                    <button type="submit" class="btn btn-primary">Cadastrar</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Modal Importar Clientes Planilha -->
+    <div id="modal-import-clientes" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000; align-items: center; justify-content: center; padding: 20px;">
+        <div class="form-card" style="width: 100%; max-width: 700px; max-height: 90vh; overflow-y: auto;">
+            <div class="page-header" style="margin-bottom: 20px;">
+                <h3>Importar Clientes via Planilha (CSV / Excel)</h3>
+                <button onclick="document.getElementById('modal-import-clientes').style.display='none'" class="btn btn-secondary" style="padding: 6px 12px;">X</button>
+            </div>
+            
+            <div style="background-color: var(--bg-primary); padding: 16px; border-radius: var(--radius-sm); margin-bottom: 20px; font-size: 13px;">
+                <h4 style="margin-bottom: 8px;"><i class="fa-solid fa-circle-info"></i> Instruções sobre as Colunas:</h4>
+                <p>Você pode importar subindo um arquivo <strong>.CSV</strong> ou <strong>copiando as células</strong> da sua planilha (Excel ou Google Sheets) e <strong>colando no campo abaixo</strong>.</p>
+                <p style="margin-top: 8px;">A planilha deve conter uma linha de cabeçalho com os nomes das colunas (a ordem das colunas não importa):</p>
+                <table style="width: 100%; margin-top: 10px; border-collapse: collapse; text-align: left;">
+                    <thead>
+                        <tr style="border-bottom: 1px solid var(--border-color);">
+                            <th style="padding: 4px;">Coluna</th>
+                            <th style="padding: 4px;">Descrição</th>
+                            <th style="padding: 4px;">Obrigatório</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td style="padding: 4px;"><code>Nome</code></td>
+                            <td style="padding: 4px;">Nome completo do fornecedor</td>
+                            <td style="padding: 4px; color: var(--status-vendido);">Sim</td>
+                        </tr>
+                        <tr style="background-color: rgba(255,255,255,0.3);">
+                            <td style="padding: 4px;"><code>CPF</code></td>
+                            <td style="padding: 4px;">CPF (com ou sem pontuação)</td>
+                            <td style="padding: 4px; color: var(--status-vendido);">Sim</td>
+                        </tr>
+                        <tr>
+                            <td style="padding: 4px;"><code>Telefone</code></td>
+                            <td style="padding: 4px;">Telefone/Whatsapp com DDD</td>
+                            <td style="padding: 4px;">Não (vazio se omitido)</td>
+                        </tr>
+                        <tr style="background-color: rgba(255,255,255,0.3);">
+                            <td style="padding: 4px;"><code>Email</code></td>
+                            <td style="padding: 4px;">E-mail do cliente</td>
+                            <td style="padding: 4px;">Não (vazio se omitido)</td>
+                        </tr>
+                        <tr>
+                            <td style="padding: 4px;"><code>Tipo Chave PIX</code></td>
+                            <td style="padding: 4px;">Opções: CPF, Celular, Email, Chave Aleatória</td>
+                            <td style="padding: 4px;">Não (default: CPF)</td>
+                        </tr>
+                        <tr style="background-color: rgba(255,255,255,0.3);">
+                            <td style="padding: 4px;"><code>Chave PIX</code></td>
+                            <td style="padding: 4px;">Chave PIX correspondente</td>
+                            <td style="padding: 4px;">Não (usa CPF se omitido)</td>
+                        </tr>
+                        <tr>
+                            <td style="padding: 4px;"><code>Comissao Padrao</code></td>
+                            <td style="padding: 4px;">Taxa percentual da comissão (Ex: 20)</td>
+                            <td style="padding: 4px;">Não (default: 20)</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="form-group" style="margin-bottom: 16px;">
+                <label class="form-label">Opção 1: Enviar Arquivo .CSV</label>
+                <input type="file" id="import-clientes-file" accept=".csv,.txt,.tsv" class="form-control">
+            </div>
+
+            <div class="form-group" style="margin-bottom: 20px;">
+                <label class="form-label">Opção 2: Copiar & Colar células da planilha (Excel/Sheets)</label>
+                <textarea id="import-clientes-text" rows="5" class="form-control" placeholder="Cole as linhas copiadas aqui, incluindo o cabeçalho...&#10;Exemplo:&#10;Nome&#9;CPF&#9;Telefone&#9;Email&#10;João da Silva&#9;11122233344&#9;62999998888&#9;joao@gmail.com"></textarea>
+            </div>
+
+            <div class="form-actions">
+                <button type="button" onclick="document.getElementById('modal-import-clientes').style.display='none'" class="btn btn-secondary">Cancelar</button>
+                <button type="button" id="btn-do-import-clientes" class="btn btn-primary">Processar Importação</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Scripts de dados e controle -->
+    <script src="../js/db.js"></script>
+    <script src="../js/app.js"></script>
+    <script>
+        document.getElementById('btn-do-import-clientes').addEventListener('click', () => {
+            const fileInput = document.getElementById('import-clientes-file');
+            const textInput = document.getElementById('import-clientes-text').value;
+            
+            if (fileInput.files.length > 0) {
+                const file = fileInput.files[0];
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    executeClientesImport(e.target.result);
+                };
+                reader.readAsText(file);
+            } else if (textInput.trim() !== '') {
+                executeClientesImport(textInput);
+            } else {
+                alert("Por favor, envie um arquivo ou cole os dados da planilha no campo de texto.");
+            }
+        });
+
+        function executeClientesImport(csvContent) {
+            const res = window.GoianitaDB.importExport.importClientesFromCsv(csvContent);
+            if (res.success) {
+                let msg = `Sucesso! ${res.count} fornecedores cadastrados com sucesso.`;
+                if (res.errors && res.errors.length > 0) {
+                    msg += `\n\nErros ocorridos em algumas linhas:\n` + res.errors.slice(0, 10).join('\n');
+                    if (res.errors.length > 10) msg += `\n...e mais ${res.errors.length - 10} erros.`;
+                }
+                alert(msg);
+                window.location.reload();
+            } else {
+                alert("Erro ao processar dados: " + res.error);
+            }
+        }
+    </script>
+</body>
+</html>

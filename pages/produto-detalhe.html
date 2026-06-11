@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Detalhes do Produto - Goianita Novo de novo</title>
+    <!-- Firebase SDKs -->
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
+    <link rel="stylesheet" href="../css/style.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body>
+    <div class="app-container">
+        <!-- Sidebar Navigation -->
+        <aside class="sidebar">
+            <div class="logo-container">
+                <img src="../logo.png" alt="Logo Goianita" />
+                <div>
+                    <span class="logo-text">Goianita Novo de novo</span>
+                    <span class="logo-sub">Consignações</span>
+                </div>
+            </div>
+            
+            <nav>
+                <ul class="nav-menu">
+                    <li class="nav-item">
+                        <a href="../dashboard.html">
+                            <i class="fa-solid fa-chart-line"></i> Dashboard
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a href="clientes.html">
+                            <i class="fa-solid fa-users"></i> Clientes / Fornecedores
+                        </a>
+                    </li>
+                    <li class="nav-item active">
+                        <a href="produtos.html">
+                            <i class="fa-solid fa-box-open"></i> Produtos Consignados
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a href="financeiro.html">
+                            <i class="fa-solid fa-wallet"></i> Financeiro / Repasses
+                        </a>
+                    </li>
+                </ul>
+            </nav>
+            
+            <div class="sidebar-footer">
+                <div class="user-badge">
+                    <div class="user-avatar">CL</div>
+                    <div class="user-info">
+                        <span class="user-name">Cleber</span>
+                        <span class="user-role">Administrador</span>
+                    </div>
+                </div>
+            </div>
+        </aside>
+
+        <!-- Main Content Area -->
+        <main class="main-content">
+            <header class="page-header">
+                <div>
+                    <h1 class="page-title" id="prod-detalhe-nome">Nome do Produto</h1>
+                    <p class="page-subtitle">SKU: <strong id="prod-detalhe-sku">GOI-PR-0000</strong></p>
+                </div>
+                <div style="display: flex; gap: 12px;">
+                    <a href="produtos.html" class="btn btn-secondary">
+                        <i class="fa-solid fa-arrow-left"></i> Voltar à Lista
+                    </a>
+                </div>
+            </header>
+
+            <div class="detail-layout">
+                <!-- Coluna Principal -->
+                <div class="detail-main">
+                    <!-- Ficha Técnica -->
+                    <div class="info-box">
+                        <h4 class="info-box-title">Especificações Técnicas (Padrão Olist)</h4>
+                        <div class="info-grid">
+                            <div class="info-item">
+                                <span class="label">Fornecedor</span>
+                                <span class="value" id="prod-detalhe-cliente">-</span>
+                            </div>
+                            <div class="info-item">
+                                <span class="label">Estado de Conservação</span>
+                                <span class="value" id="prod-detalhe-conservacao">-</span>
+                            </div>
+                            <div class="info-item">
+                                <span class="label">Dimensões & Peso</span>
+                                <span class="value" id="prod-detalhe-dimensoes">-</span>
+                            </div>
+                            <div class="info-item">
+                                <span class="label">Descrição</span>
+                                <span class="value" id="prod-detalhe-desc">-</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Ficha de Valores -->
+                    <div class="info-box">
+                        <h4 class="info-box-title">Valores & Comissões</h4>
+                        <div class="info-grid">
+                            <div class="info-item">
+                                <span class="label">Preço de Venda Estabelecido</span>
+                                <span class="value" style="font-size: 20px; font-weight: 700; color: var(--accent-gold);" id="prod-detalhe-preco-venda">-</span>
+                            </div>
+                            <div class="info-item">
+                                <span class="label">Comissão Retida pela Goianita Novo de novo</span>
+                                <span class="value" id="prod-detalhe-comissao">-</span>
+                            </div>
+                            <div class="info-item">
+                                <span class="label">Repasse Líquido ao Cliente</span>
+                                <span class="value" style="font-size: 20px; font-weight: 700; color: var(--status-pago);" id="prod-detalhe-valor-cliente">-</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Coluna Lateral (Gestão de Status e Timeline) -->
+                <div class="detail-sidebar">
+                    <!-- Gestão de Status Rápida -->
+                    <div class="info-box">
+                        <h4 class="info-box-title">Atualizar Status</h4>
+                        <div style="margin-bottom: 20px;">
+                            <span class="label">Status Atual</span>
+                            <div id="prod-detalhe-status" style="margin-top: 8px;">-</div>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label class="form-label" for="update-status-select">Alterar para:</label>
+                            <select id="update-status-select" class="filter-select" style="width: 100%;">
+                                <option value="Em Triagem">Em Triagem</option>
+                                <option value="À Venda">À Venda</option>
+                                <option value="Vendido">Vendido</option>
+                                <option value="Pago">Pago</option>
+                                <option value="Devolução Solicitada">Devolução Solicitada</option>
+                                <option value="Devolvido">Devolvido</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <!-- Prazos -->
+                    <div class="info-box">
+                        <h4 class="info-box-title">Controle de Vigência (6 Meses)</h4>
+                        <div class="info-grid" style="grid-template-columns: 1fr; gap: 16px;">
+                            <div class="info-item">
+                                <span class="label">Data de Entrada</span>
+                                <span class="value" id="prod-detalhe-entrada">-</span>
+                            </div>
+                            <div class="info-item">
+                                <span class="label">Data Limite de Consignação</span>
+                                <span class="value" style="color: var(--status-devolucao); font-weight: 600;" id="prod-detalhe-limite">-</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Linha do Tempo / Timeline -->
+                    <div class="info-box">
+                        <h4 class="info-box-title">Histórico de Alterações</h4>
+                        <div class="timeline" id="prod-timeline">
+                            <!-- Popula via app.js -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Scripts de dados e controle -->
+    <script src="../js/db.js"></script>
+    <script src="../js/app.js"></script>
+</body>
+</html>

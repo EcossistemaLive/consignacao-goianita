@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Detalhes do Fornecedor - Goianita Novo de novo</title>
+    <!-- Firebase SDKs -->
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
+    <link rel="stylesheet" href="../css/style.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body>
+    <div class="app-container">
+        <!-- Sidebar Navigation -->
+        <aside class="sidebar">
+            <div class="logo-container">
+                <img src="../logo.png" alt="Logo Goianita" />
+                <div>
+                    <span class="logo-text">Goianita Novo de novo</span>
+                    <span class="logo-sub">Consignações</span>
+                </div>
+            </div>
+            
+            <nav>
+                <ul class="nav-menu">
+                    <li class="nav-item">
+                        <a href="../dashboard.html">
+                            <i class="fa-solid fa-chart-line"></i> Dashboard
+                        </a>
+                    </li>
+                    <li class="nav-item active">
+                        <a href="clientes.html">
+                            <i class="fa-solid fa-users"></i> Clientes / Fornecedores
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a href="produtos.html">
+                            <i class="fa-solid fa-box-open"></i> Produtos Consignados
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a href="financeiro.html">
+                            <i class="fa-solid fa-wallet"></i> Financeiro / Repasses
+                        </a>
+                    </li>
+                </ul>
+            </nav>
+            
+            <div class="sidebar-footer">
+                <div class="user-badge">
+                    <div class="user-avatar">CL</div>
+                    <div class="user-info">
+                        <span class="user-name">Cleber</span>
+                        <span class="user-role">Administrador</span>
+                    </div>
+                </div>
+            </div>
+        </aside>
+
+        <!-- Main Content Area -->
+        <main class="main-content">
+            <header class="page-header">
+                <div>
+                    <h1 class="page-title" id="cli-detalhe-nome">Nome do Fornecedor</h1>
+                    <p class="page-subtitle">Extrato e ficha cadastral completa do fornecedor.</p>
+                </div>
+                <div style="display: flex; gap: 12px;">
+                    <a href="clientes.html" class="btn btn-secondary">
+                        <i class="fa-solid fa-arrow-left"></i> Voltar à Lista
+                    </a>
+                    <button id="btn-pagar-cliente" class="btn btn-gold">
+                        <i class="fa-solid fa-file-invoice-dollar"></i> Efetuar Repasse (PIX)
+                    </button>
+                </div>
+            </header>
+
+            <!-- Detalhes do Cliente -->
+            <div class="detail-layout">
+                <!-- Coluna Principal -->
+                <div class="detail-main">
+                    <!-- Ficha Financeira do Fornecedor -->
+                    <div class="card-grid" style="grid-template-columns: repeat(3, 1fr); margin-bottom: 0;">
+                        <div class="kpi-card" style="border-left: 4px solid var(--accent-gold);">
+                            <div class="kpi-title">Saldo Pendente</div>
+                            <div class="kpi-value" id="cli-saldo-pendente">R$ 0,00</div>
+                            <div class="kpi-desc">Valor líquido a ser pago via PIX</div>
+                        </div>
+                        <div class="kpi-card">
+                            <div class="kpi-title">Vendas Totais</div>
+                            <div class="kpi-value" id="cli-total-vendas">R$ 0,00</div>
+                            <div class="kpi-desc">Quota do cliente de vendas concluídas</div>
+                        </div>
+                        <div class="kpi-card" style="border-left: 4px solid var(--status-pago);">
+                            <div class="kpi-title">Repasses Efetuados</div>
+                            <div class="kpi-value" id="cli-total-pago">R$ 0,00</div>
+                            <div class="kpi-desc">Total pago em histórico</div>
+                        </div>
+                    </div>
+
+                    <!-- Lista de Produtos do Cliente -->
+                    <div class="table-container">
+                        <div class="table-header-bar">
+                            <h3>Produtos em Consignação</h3>
+                        </div>
+                        <table class="premium-table">
+                            <thead>
+                                <tr>
+                                    <th>SKU</th>
+                                    <th>Produto</th>
+                                    <th>Preço Venda</th>
+                                    <th>Comissão Loja</th>
+                                    <th>Valor Cliente</th>
+                                    <th>Status</th>
+                                    <th>Ações</th>
+                                </tr>
+                            </thead>
+                            <tbody id="cli-produtos-table">
+                                <!-- Populado dinamicamente -->
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <!-- Lista de Pagamentos Efetuados -->
+                    <div class="table-container">
+                        <div class="table-header-bar">
+                            <h3>Histórico de Pagamentos PIX</h3>
+                        </div>
+                        <table class="premium-table">
+                            <thead>
+                                <tr>
+                                    <th>Data</th>
+                                    <th>Valor Pago</th>
+                                    <th>Chave Destino</th>
+                                    <th>Comprovante Autenticação</th>
+                                </tr>
+                            </thead>
+                            <tbody id="cli-pagamentos-table">
+                                <!-- Populado dinamicamente -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Coluna Lateral (Ficha Cadastral) -->
+                <div class="detail-sidebar">
+                    <div class="info-box">
+                        <h4 class="info-box-title">Ficha Cadastral</h4>
+                        <div class="info-grid" style="grid-template-columns: 1fr;">
+                            <div class="info-item" style="margin-bottom: 16px;">
+                                <span class="label">CPF</span>
+                                <span class="value" id="cli-detalhe-cpf">-</span>
+                            </div>
+                            <div class="info-item" style="margin-bottom: 16px;">
+                                <span class="label">Telefone / Whatsapp</span>
+                                <span class="value" id="cli-detalhe-tel">-</span>
+                            </div>
+                            <div class="info-item" style="margin-bottom: 16px;">
+                                <span class="label">E-mail</span>
+                                <span class="value" id="cli-detalhe-email">-</span>
+                            </div>
+                            <div class="info-item" style="margin-bottom: 16px;">
+                                <span class="label">Dados PIX</span>
+                                <span class="value" id="cli-detalhe-pix">-</span>
+                            </div>
+                            <div class="info-item" style="margin-bottom: 16px;">
+                                <span class="label">Comissão Goianita Padrão</span>
+                                <span class="value" id="cli-detalhe-comissao">-</span>
+                            </div>
+                            <div class="info-item">
+                                <span class="label">Data de Cadastro</span>
+                                <span class="value" id="cli-detalhe-cadastro">-</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Scripts de dados e controle -->
+    <script src="../js/db.js"></script>
+    <script src="../js/app.js"></script>
+</body>
+</html>
