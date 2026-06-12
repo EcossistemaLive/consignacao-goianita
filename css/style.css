@@ -769,4 +769,8 @@ h1, h2, h3, h4, h5, h6 {
     .search-input, .filter-select {
         width: 100%;
     }
+
+    .form-card {
+        padding: 24px 16px;
+    }
 }
