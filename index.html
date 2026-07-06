@@ -19,7 +19,7 @@
             padding: 24px;
         }
         .login-card {
-            background-color: var(--bg-secondary); /* Verde Musgo */
+            background-color: var(--bg-secondary);
             color: #ffffff;
             border-radius: var(--radius-lg);
             border: 1px solid rgba(255, 255, 255, 0.15);
@@ -36,9 +36,6 @@
             align-items: center;
             gap: 12px;
         }
-        .login-logo .logo-text {
-            font-size: 24px;
-        }
         .login-form {
             display: flex;
             flex-direction: column;
@@ -50,13 +47,34 @@
             font-size: 13px;
             color: #e6e1da;
         }
+        .login-toggle {
+            margin-top: 24px;
+            font-size: 13px;
+            color: #c8c0b8;
+        }
+        .login-toggle a {
+            color: var(--accent-gold);
+            text-decoration: underline;
+            cursor: pointer;
+        }
+        .login-toggle a:hover {
+            color: #e6b84a;
+        }
+        .section-divider {
+            border: none;
+            border-top: 1px solid rgba(255,255,255,0.15);
+            margin: 8px 0 20px 0;
+        }
+        .section-title {
+            font-size: 14px;
+            font-weight: 600;
+            color: var(--accent-gold);
+            text-transform: uppercase;
+            letter-spacing: 1.5px;
+            margin-bottom: 20px;
+        }
         @media (max-width: 480px) {
-            .login-card {
-                padding: 32px 20px;
-            }
-            .login-logo .logo-text {
-                font-size: 22px;
-            }
+            .login-card { padding: 32px 20px; }
         }
     </style>
 </head>
@@ -66,198 +84,265 @@
             <div class="login-logo">
                 <img src="logo.png" alt="Logo Goianita Novo de novo" style="width: 150px; height: auto; margin-bottom: 12px; filter: brightness(0) invert(1);">
                 <div>
-                    <span class="logo-text" style="color: white; font-size: 26px; font-weight: 700; display: block;">Goianita Novo de novo</span>
-                    <span class="logo-sub" style="color: var(--accent-gold); font-size: 11px; text-transform: uppercase; letter-spacing: 2px; font-weight: 600; display: block; margin-top: 4px;">Comodato & Consignação</span>
+                    <span style="color: white; font-size: 26px; font-weight: 700; display: block;">Goianita Novo de novo</span>
+                    <span style="color: var(--accent-gold); font-size: 11px; text-transform: uppercase; letter-spacing: 2px; font-weight: 600; display: block; margin-top: 4px;">Comodato &amp; Consignação</span>
                 </div>
             </div>
-            
-             <form class="login-form" id="login-form">
-                <div class="form-group">
-                    <label class="form-label" for="username" style="color: #e6e1da;">CPF (Cliente) ou E-mail (Admin)</label>
-                    <input type="text" id="username" class="form-control" placeholder="000.000.000-00 ou e-mail" required value="" style="background-color: rgba(255,255,255,0.9); color: var(--text-main);">
+
+            <!-- ===== FORMULÁRIO DE LOGIN ===== -->
+            <div id="section-login">
+                <form class="login-form" id="login-form">
+                    <div class="form-group">
+                        <label class="form-label" for="username" style="color: #e6e1da;">CPF (Cliente) ou E-mail (Admin)</label>
+                        <input type="text" id="username" class="form-control" placeholder="000.000.000-00 ou e-mail" required style="background-color: rgba(255,255,255,0.9); color: var(--text-main);">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label" for="password" style="color: #e6e1da;">Senha de Acesso</label>
+                        <input type="password" id="password" class="form-control" placeholder="Sua senha" required style="background-color: rgba(255,255,255,0.9); color: var(--text-main);">
+                    </div>
+                    <button type="submit" id="btn-login" class="btn btn-gold" style="padding: 16px; font-size: 16px; margin-top: 12px;">Entrar no Sistema</button>
+                </form>
+
+                <div class="login-toggle">
+                    Administrador sem acesso? <a id="link-para-cadastro">Primeiro acesso &rarr;</a>
                 </div>
-                <div class="form-group">
-                    <label class="form-label" for="password" style="color: #e6e1da;">Senha de Acesso</label>
-                    <input type="password" id="password" class="form-control" placeholder="Sua senha" required value="" style="background-color: rgba(255,255,255,0.9); color: var(--text-main);">
+            </div>
+
+            <!-- ===== FORMULÁRIO DE CADASTRO (PRIMEIRO ACESSO ADMIN) ===== -->
+            <div id="section-cadastro" style="display: none;">
+                <p class="section-title">Cadastro de Administrador</p>
+                <hr class="section-divider">
+                <form class="login-form" id="cadastro-form">
+                    <div class="form-group">
+                        <label class="form-label" for="cad-email" style="color: #e6e1da;">E-mail Corporativo</label>
+                        <input type="email" id="cad-email" class="form-control" placeholder="seu@email.com.br" required style="background-color: rgba(255,255,255,0.9); color: var(--text-main);">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label" for="cad-senha" style="color: #e6e1da;">Criar Senha</label>
+                        <input type="password" id="cad-senha" class="form-control" placeholder="Mínimo 6 caracteres" required minlength="6" style="background-color: rgba(255,255,255,0.9); color: var(--text-main);">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label" for="cad-confirma" style="color: #e6e1da;">Confirmar Senha</label>
+                        <input type="password" id="cad-confirma" class="form-control" placeholder="Repita a senha" required minlength="6" style="background-color: rgba(255,255,255,0.9); color: var(--text-main);">
+                    </div>
+                    <button type="submit" id="btn-cadastrar" class="btn btn-gold" style="padding: 16px; font-size: 16px; margin-top: 12px;">Criar Conta e Entrar</button>
+                </form>
+
+                <div class="login-toggle">
+                    <a id="link-para-login">&larr; Voltar ao Login</a>
                 </div>
-                
-                <button type="submit" class="btn btn-gold" style="padding: 16px; font-size: 16px; margin-top: 12px;">Entrar no Sistema</button>
-            </form>
-            
+            </div>
+
             <div class="login-footer">
                 <p>&copy; 2026 Casas Goianita. Todos os direitos reservados.</p>
-                <p style="font-size: 11px; margin-top: 8px; color: var(--accent-gold);">Módulo de ReCommerce & Economia Circular</p>
+                <p style="font-size: 11px; margin-top: 8px; color: var(--accent-gold);">Módulo de ReCommerce &amp; Economia Circular</p>
             </div>
         </div>
     </div>
 
     <script src="js/db.js"></script>
     <script>
+        // ─────────────────────────────────────────────
+        // CONFIGURAÇÃO: e-mails de admins autorizados
+        // Para adicionar novos admins, basta incluir o e-mail nesta lista.
+        // ─────────────────────────────────────────────
+        const ADMINS_AUTORIZADOS = [
+            'admin@goianita.com.br',
+            'debora@goianita.com.br',
+            'eduardfreitasg@gmail.com',
+            'goianita@terra.com.br'
+        ];
+
+        // Atalhos de digitação → e-mail completo
+        const ATALHOS_ADMIN = {
+            'admin':    'admin@goianita.com.br',
+            'debora':   'debora@goianita.com.br',
+            'eduard':   'eduardfreitasg@gmail.com',
+            'goianita': 'goianita@terra.com.br'
+        };
+
+        // ─────────────────────────────────────────────
+        // ALTERNAR ENTRE LOGIN E CADASTRO
+        // ─────────────────────────────────────────────
+        document.getElementById('link-para-cadastro').addEventListener('click', () => {
+            document.getElementById('section-login').style.display = 'none';
+            document.getElementById('section-cadastro').style.display = 'block';
+            document.getElementById('cad-email').focus();
+        });
+
+        document.getElementById('link-para-login').addEventListener('click', () => {
+            document.getElementById('section-cadastro').style.display = 'none';
+            document.getElementById('section-login').style.display = 'block';
+            document.getElementById('username').focus();
+        });
+
+        // ─────────────────────────────────────────────
+        // LOGIN NORMAL
+        // ─────────────────────────────────────────────
         document.getElementById('login-form').addEventListener('submit', (e) => {
             e.preventDefault();
             const user = document.getElementById('username').value.trim();
             const pass = document.getElementById('password').value.trim();
-            const btnSubmit = document.querySelector('button[type="submit"]');
+            const btn  = document.getElementById('btn-login');
 
-            const lowerUser = user.toLowerCase();
+            const lowerUser  = user.toLowerCase();
+            const isAdmin    = lowerUser.includes('@') || Object.keys(ATALHOS_ADMIN).includes(lowerUser);
+            const adminEmail = ATALHOS_ADMIN[lowerUser] || lowerUser;
 
-            // Lista de e-mails de administradores pré-autorizados
-            const adminsAutorizados = [
-                'admin@goianita.com.br',
-                'debora@goianita.com.br',
-                'eduardfreitasg@gmail.com',
-                'goianita@terra.com.br'
-            ];
-
-            // Detectar se o login é de administrador (qualquer e-mail ou atalhos)
-            const isAdminEmail = lowerUser.includes('@') || 
-                                 lowerUser === 'admin' || 
-                                 lowerUser === 'eduard' || 
-                                 lowerUser === 'debora' ||
-                                 lowerUser === 'goianita';
-            
-            if (isAdminEmail) {
-                let adminEmail = lowerUser;
-                if (lowerUser === 'admin')     adminEmail = 'admin@goianita.com.br';
-                else if (lowerUser === 'debora')   adminEmail = 'debora@goianita.com.br';
-                else if (lowerUser === 'eduard')   adminEmail = 'eduardfreitasg@gmail.com';
-                else if (lowerUser === 'goianita') adminEmail = 'goianita@terra.com.br';
-                
+            if (isAdmin) {
+                // Modo offline
                 if (typeof firebase === 'undefined' || !window.GoianitaAuth) {
-                    // Fallback local se estiver offline
                     if (pass === 'goianita123') {
                         sessionStorage.setItem('goianita_role', 'admin');
                         sessionStorage.setItem('goianita_email', adminEmail);
                         sessionStorage.removeItem('goianita_cliente_id');
                         window.location.href = 'dashboard.html';
                     } else {
-                        alert('Senha incorreta (fallback offline).');
+                        alert('Senha incorreta (modo offline).');
                     }
                     return;
                 }
 
-                btnSubmit.disabled = true;
+                btn.disabled = true;
+                btn.textContent = 'Autenticando...';
 
-                // Estratégia para e-mails pré-autorizados:
-                // Tenta CRIAR a conta primeiro. Se o Firebase disser que já existe,
-                // aí sim faz o signIn normal. Isso evita depender de códigos de erro
-                // que mudam entre versões do Firebase SDK.
-                const ehAdminPreAutorizado = adminsAutorizados.includes(adminEmail);
-
-                if (ehAdminPreAutorizado) {
-                    btnSubmit.textContent = 'Verificando acesso...';
-
-                    window.GoianitaAuth.createUserWithEmailAndPassword(adminEmail, pass)
-                        .then(() => {
-                            // Conta criada com sucesso (primeiro acesso)
-                            sessionStorage.setItem('goianita_role', 'admin');
-                            sessionStorage.setItem('goianita_email', adminEmail);
-                            sessionStorage.removeItem('goianita_cliente_id');
-                            window.location.href = 'dashboard.html';
-                        })
-                        .catch(createError => {
-                            if (createError.code === 'auth/email-already-in-use') {
-                                // Conta já existe — faz o login normal
-                                btnSubmit.textContent = 'Autenticando...';
-                                window.GoianitaAuth.signInWithEmailAndPassword(adminEmail, pass)
-                                    .then(() => {
-                                        sessionStorage.setItem('goianita_role', 'admin');
-                                        sessionStorage.setItem('goianita_email', adminEmail);
-                                        sessionStorage.removeItem('goianita_cliente_id');
-                                        window.location.href = 'dashboard.html';
-                                    })
-                                    .catch(signInError => {
-                                        alert('Senha incorreta para este administrador.\n\nDetalhes: ' + signInError.message);
-                                        btnSubmit.disabled = false;
-                                        btnSubmit.textContent = 'Entrar no Sistema';
-                                    });
-                            } else {
-                                alert('Erro ao criar conta:\n' + createError.message);
-                                btnSubmit.disabled = false;
-                                btnSubmit.textContent = 'Entrar no Sistema';
+                window.GoianitaAuth.signInWithEmailAndPassword(adminEmail, pass)
+                    .then(() => {
+                        sessionStorage.setItem('goianita_role', 'admin');
+                        sessionStorage.setItem('goianita_email', adminEmail);
+                        sessionStorage.removeItem('goianita_cliente_id');
+                        window.location.href = 'dashboard.html';
+                    })
+                    .catch(err => {
+                        // Se a conta não existe, sugere o cadastro
+                        if (err.code === 'auth/user-not-found' || err.code === 'auth/invalid-credential') {
+                            if (confirm('Conta não encontrada para este e-mail.\n\nDeseja fazer seu primeiro acesso e criar uma senha?')) {
+                                document.getElementById('section-login').style.display = 'none';
+                                document.getElementById('section-cadastro').style.display = 'block';
+                                document.getElementById('cad-email').value = adminEmail;
+                                document.getElementById('cad-senha').focus();
                             }
-                        });
-                } else {
-                    // E-mail não está na lista de autorizados — login direto sem auto-registro
-                    btnSubmit.textContent = 'Autenticando Admin...';
-                    window.GoianitaAuth.signInWithEmailAndPassword(adminEmail, pass)
-                        .then(() => {
-                            sessionStorage.setItem('goianita_role', 'admin');
-                            sessionStorage.setItem('goianita_email', adminEmail);
-                            sessionStorage.removeItem('goianita_cliente_id');
-                            window.location.href = 'dashboard.html';
-                        })
-                        .catch(error => {
-                            alert('Falha no login do Administrador: E-mail ou senha incorretos.\n\nDetalhes: ' + error.message);
-                            btnSubmit.disabled = false;
-                            btnSubmit.textContent = 'Entrar no Sistema';
-                        });
-                }
+                        } else {
+                            alert('Senha incorreta ou erro de autenticação.\n\nDetalhes: ' + err.message);
+                        }
+                        btn.disabled = false;
+                        btn.textContent = 'Entrar no Sistema';
+                    });
                 return;
             }
-            
-            // Login Cliente (CPF)
+
+            // ── Login Cliente (CPF) ──
             const cleanCpf = user.replace(/\D/g, '');
             if (!cleanCpf) {
-                alert('Por favor, insira o usuário (CPF para clientes ou E-mail para administradores).');
+                alert('Por favor, insira o CPF (para clientes) ou e-mail (para administradores).');
                 return;
             }
-            
-            const email = cleanCpf + '@goianita.com.br';
-            
+
+            const emailCpf = cleanCpf + '@goianita.com.br';
+
             if (typeof firebase === 'undefined' || !window.GoianitaAuth) {
-                // Fallback local se estiver sem Firebase carregado
                 const clientes = window.GoianitaDB.clientes.getAll();
-                const clienteEncontrado = clientes.find(c => c.cpf.replace(/\D/g, '') === cleanCpf);
-                
-                if (clienteEncontrado) {
+                const cli = clientes.find(c => c.cpf.replace(/\D/g, '') === cleanCpf);
+                if (cli) {
                     sessionStorage.setItem('goianita_role', 'user');
-                    sessionStorage.setItem('goianita_cliente_id', clienteEncontrado.id);
-                    window.location.href = 'pages/cliente-detalhe.html?id=' + clienteEncontrado.id;
+                    sessionStorage.setItem('goianita_cliente_id', cli.id);
+                    window.location.href = 'pages/cliente-detalhe.html?id=' + cli.id;
                 } else {
                     alert('CPF não cadastrado.');
                 }
                 return;
             }
 
-            btnSubmit.disabled = true;
-            btnSubmit.textContent = 'Autenticando...';
+            btn.disabled = true;
+            btn.textContent = 'Autenticando...';
 
-            window.GoianitaAuth.signInWithEmailAndPassword(email, pass)
+            window.GoianitaAuth.signInWithEmailAndPassword(emailCpf, pass)
                 .then(userCredential => {
                     const clientes = window.GoianitaDB.clientes.getAll();
-                    const clienteEncontrado = clientes.find(c => c.cpf.replace(/\D/g, '') === cleanCpf);
-                    
-                    if (clienteEncontrado) {
+                    const cli = clientes.find(c => c.cpf.replace(/\D/g, '') === cleanCpf);
+                    if (cli) {
                         sessionStorage.setItem('goianita_role', 'user');
-                        sessionStorage.setItem('goianita_cliente_id', clienteEncontrado.id);
-                        sessionStorage.setItem('goianita_user_name', clienteEncontrado.nome);
-                        sessionStorage.setItem('goianita_email', email);
-                        window.location.href = 'pages/cliente-detalhe.html?id=' + clienteEncontrado.id;
+                        sessionStorage.setItem('goianita_cliente_id', cli.id);
+                        sessionStorage.setItem('goianita_user_name', cli.nome);
+                        sessionStorage.setItem('goianita_email', emailCpf);
+                        window.location.href = 'pages/cliente-detalhe.html?id=' + cli.id;
                     } else {
-                        // Se o Auth foi mas não temos o cadastro local, cria perfil básico
-                        const basicCliente = {
-                            nome: userCredential.user.displayName || "Fornecedor Novo",
+                        const basicCli = {
+                            nome: userCredential.user.displayName || 'Fornecedor',
                             cpf: user,
-                            telefone: "",
+                            telefone: '',
                             email: userCredential.user.email,
-                            chavePixType: "CPF",
+                            chavePixType: 'CPF',
                             chavePix: user,
                             comissaoPadrao: 50
                         };
-                        window.GoianitaDB.clientes.save(basicCliente).then(saved => {
+                        window.GoianitaDB.clientes.save(basicCli).then(saved => {
                             sessionStorage.setItem('goianita_role', 'user');
                             sessionStorage.setItem('goianita_cliente_id', saved.id);
                             sessionStorage.setItem('goianita_user_name', saved.nome);
-                            sessionStorage.setItem('goianita_email', email);
+                            sessionStorage.setItem('goianita_email', emailCpf);
                             window.location.href = 'pages/cliente-detalhe.html?id=' + saved.id;
                         });
                     }
                 })
-                .catch(error => {
-                    alert('Falha na autenticação: CPF ou Senha incorretos.');
-                    btnSubmit.disabled = false;
-                    btnSubmit.textContent = 'Entrar no Sistema';
+                .catch(() => {
+                    alert('CPF ou senha incorretos.');
+                    btn.disabled = false;
+                    btn.textContent = 'Entrar no Sistema';
+                });
+        });
+
+        // ─────────────────────────────────────────────
+        // CADASTRO DE PRIMEIRO ACESSO (ADMIN)
+        // ─────────────────────────────────────────────
+        document.getElementById('cadastro-form').addEventListener('submit', (e) => {
+            e.preventDefault();
+            const email    = document.getElementById('cad-email').value.trim().toLowerCase();
+            const senha    = document.getElementById('cad-senha').value;
+            const confirma = document.getElementById('cad-confirma').value;
+            const btn      = document.getElementById('btn-cadastrar');
+
+            // Validar senhas
+            if (senha !== confirma) {
+                alert('As senhas não coincidem. Por favor, verifique.');
+                return;
+            }
+
+            // Validar se o e-mail é autorizado
+            if (!ADMINS_AUTORIZADOS.includes(email)) {
+                alert('Este e-mail não está na lista de administradores autorizados.\n\nEntre em contato com o administrador do sistema para liberar seu acesso.');
+                return;
+            }
+
+            if (typeof firebase === 'undefined' || !window.GoianitaAuth) {
+                alert('Sem conexão com o Firebase. Tente novamente com internet.');
+                return;
+            }
+
+            btn.disabled = true;
+            btn.textContent = 'Criando conta...';
+
+            window.GoianitaAuth.createUserWithEmailAndPassword(email, senha)
+                .then(() => {
+                    sessionStorage.setItem('goianita_role', 'admin');
+                    sessionStorage.setItem('goianita_email', email);
+                    sessionStorage.removeItem('goianita_cliente_id');
+                    window.location.href = 'dashboard.html';
+                })
+                .catch(err => {
+                    if (err.code === 'auth/email-already-in-use') {
+                        alert('Este e-mail já possui uma conta cadastrada.\n\nVolte ao login e use sua senha habitual.');
+                        document.getElementById('section-cadastro').style.display = 'none';
+                        document.getElementById('section-login').style.display = 'block';
+                        document.getElementById('username').value = email;
+                        document.getElementById('password').focus();
+                    } else if (err.code === 'auth/weak-password') {
+                        alert('Senha muito fraca. Use pelo menos 6 caracteres com letras e números.');
+                    } else {
+                        alert('Erro ao criar conta:\n' + err.message);
+                    }
+                    btn.disabled = false;
+                    btn.textContent = 'Criar Conta e Entrar';
                 });
         });
     </script>
