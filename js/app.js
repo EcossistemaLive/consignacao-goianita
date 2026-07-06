@@ -525,28 +525,21 @@ function renderProdutoNovo() {
         });
     }
 
-    // API IA Precificação Inteligente (Simulada por busca no Google Shopping local)
+    // Motor de Precificação Inteligente
     const btnPesquisar = document.getElementById('btn-ia-precificacao');
     if (btnPesquisar) {
-        btnPesquisar.addEventListener('click', () => {
-            const nome = document.getElementById('prod-nome').value;
-            if (!nome) {
-                alert("Por favor, digite o nome do produto primeiro.");
-                return;
-            }
-            btnPesquisar.textContent = "Analisando mercado...";
-            btnPesquisar.disabled = true;
-            
-            setTimeout(() => {
-                const precoSugeridoMercado = Math.floor(Math.random() * (400 - 150) + 150);
-                document.getElementById('prod-preco-sug').value = (precoSugeridoMercado * 1.2).toFixed(2);
-                document.getElementById('prod-preco').value = precoSugeridoMercado.toFixed(2);
-                alert(`Sugestão de precificação gerada!\nMédia de mercado encontrada para produtos similares: R$ ${precoSugeridoMercado.toFixed(2)}`);
-                btnPesquisar.textContent = "Precificar com IA";
-                btnPesquisar.disabled = false;
-            }, 1000);
-        });
+        btnPesquisar.addEventListener('click', () => calcularPrecificacaoInteligente());
     }
+
+    // Recalcula o painel automaticamente ao alterar categoria, conservação ou marca
+    ['prod-cat', 'prod-conservacao', 'prod-marca'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.addEventListener('change', () => {
+            if (document.getElementById('painel-precificacao')) {
+                calcularPrecificacaoInteligente();
+            }
+        });
+    });
 }
 
 // --- DETALHE E FLUXO DE STATUS DO PRODUTO ---
@@ -696,6 +689,245 @@ function renderFinanceiro() {
             reader.readAsText(file);
         });
     }
+}
+
+/**
+ * MOTOR DE PRECIFICAÇÃO INTELIGENTE — Goianita Novo de Novo
+ *
+ * Combina:
+ *   1. Tabela de faixas de preço por categoria (artigos domésticos semi-novos)
+ *   2. Multiplicador por estado de conservação
+ *   3. Boost para marcas premium do setor
+ *   4. Boost por palavras-chave no nome (conjuntos, vintage, etc.)
+ *   5. Âncoragem no preço sugerido pelo fornecedor (quando informado)
+ *   6. Arredondamento para preços psicologicamente atraentes
+ */
+function calcularPrecificacaoInteligente() {
+    const nome = (document.getElementById('prod-nome')?.value || '').trim();
+    const categoria = document.getElementById('prod-cat')?.value || 'Outros';
+    const conservacao = document.getElementById('prod-conservacao')?.value || 'Bom';
+    const marca = (document.getElementById('prod-marca')?.value || '').trim().toLowerCase();
+    const precoSugForecedor = parseFloat(document.getElementById('prod-preco-sug')?.value) || 0;
+    const comissao = parseFloat(document.getElementById('prod-comissao')?.value) || 50;
+
+    if (!nome) {
+        alert('Por favor, preencha o nome do produto antes de usar a precificação inteligente.');
+        return;
+    }
+
+    // --- 1. TABELA DE REFERÊNCIA DE PREÇOS POR CATEGORIA ---
+    // Faixas baseadas no mix de produtos da Casas Goianita (artigos domésticos semi-novos)
+    const tabelaCategoria = {
+        'Cozinha e Mesa':   { min: 40,  med: 90,  max: 350  },
+        'Decoração':        { min: 30,  med: 80,  max: 400  },
+        'Tapeçaria':        { min: 60,  med: 150, max: 600  },
+        'Banheiro':         { min: 25,  med: 60,  max: 200  },
+        'Sala de Estar':    { min: 80,  med: 200, max: 900  },
+        'Jardim':           { min: 35,  med: 100, max: 450  },
+        'Colecionáveis':    { min: 50,  med: 180, max: 1200 },
+        'Arte':             { min: 80,  med: 250, max: 2000 },
+        'Eletrodomésticos': { min: 100, med: 300, max: 1500 },
+        'Outros':           { min: 25,  med: 70,  max: 300  }
+    };
+
+    // --- 2. MULTIPLICADOR POR ESTADO DE CONSERVAÇÃO ---
+    const multConservacao = { 'Novo': 1.00, 'Excelente': 0.85, 'Bom': 0.70, 'Regular': 0.50 };
+
+    // --- 3. MARCAS PREMIUM (aumentam o valor percebido) ---
+    const marcasPremium = [
+        'porto brasil', 'tramontina', 'le creuset', 'oxford', 'lyor',
+        'wolff', 'vista alegre', 'schmidt', 'brinox', 'bon gourmet',
+        'hazan', 'royal prestige', 'heritage', 'panelux', 'coup', 'brava'
+    ];
+    const ehMarcaPremium = marcasPremium.some(m => marca.includes(m));
+    const multMarca = ehMarcaPremium ? 1.20 : 1.00;
+
+    // --- 4. BOOST POR PALAVRAS-CHAVE NO NOME ---
+    const nomeLower = nome.toLowerCase();
+    let multNome = 1.0;
+    if (nomeLower.includes('conjunto') || nomeLower.includes('kit') || nomeLower.includes('jogo')) multNome = 1.15;
+    if (nomeLower.includes('completo') || nomeLower.includes('peças') || nomeLower.includes('pçs')) multNome *= 1.10;
+    if (nomeLower.includes('antigo') || nomeLower.includes('vintage') || nomeLower.includes('colecionável')) multNome *= 1.25;
+
+    // --- 5. CÁLCULO DO PREÇO BASE ---
+    const ref = tabelaCategoria[categoria] || tabelaCategoria['Outros'];
+    const fatorConservacao = multConservacao[conservacao] || 0.70;
+
+    // Ponto de partida: mediana da categoria, ajustada por todos os fatores
+    let precoBase = ref.med * fatorConservacao * multMarca * multNome;
+
+    // Âncora no preço sugerido pelo fornecedor (quando informado)
+    if (precoSugForecedor > 0) {
+        const ancoraSugerida = precoSugForecedor * fatorConservacao * 0.85;
+        // 60% âncora do fornecedor + 40% tabela de mercado
+        precoBase = (ancoraSugerida * 0.6) + (precoBase * 0.4);
+    }
+
+    // Clampar dentro da faixa da categoria
+    precoBase = Math.max(ref.min, Math.min(ref.max, precoBase));
+
+    // Arredondar para preço psicologicamente atraente
+    const precoFinal  = arredondarPrecoComercial(precoBase);
+    const precoMinimo = arredondarPrecoComercial(ref.min * fatorConservacao * multMarca);
+    const precoMaximo = arredondarPrecoComercial(ref.max * fatorConservacao * multMarca);
+
+    // --- 6. CÁLCULO DE REPASSE ---
+    const comissaoGoianita  = (precoFinal * comissao) / 100;
+    const repasseFornecedor = precoFinal - comissaoGoianita;
+
+    // Preencher campos do formulário
+    if (document.getElementById('prod-preco-sug')) document.getElementById('prod-preco-sug').value = precoFinal.toFixed(2);
+    if (document.getElementById('prod-preco'))     document.getElementById('prod-preco').value     = precoFinal.toFixed(2);
+
+    // Exibir painel visual de resultado
+    exibirResultadoPrecificacao({
+        categoria, conservacao, ehMarcaPremium, fatorConservacao,
+        precoFinal, precoMinimo, precoMaximo,
+        comissao, comissaoGoianita, repasseFornecedor, precoSugForecedor
+    });
+}
+
+/**
+ * Arredonda preços para valores psicologicamente atraentes no varejo.
+ * Ex: 91.37 → 89,90 | 153.22 → 149,90 | 312.00 → 299,90
+ */
+function arredondarPrecoComercial(valor) {
+    if (valor <= 0) return 0;
+    const bases = [
+        10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 120, 140, 150,
+        170, 200, 230, 250, 300, 350, 400, 450, 500, 600, 700,
+        800, 900, 1000, 1200, 1500, 2000
+    ];
+    let baseEscolhida = bases[0];
+    for (const b of bases) {
+        if (b <= valor + 10) baseEscolhida = b;
+        else break;
+    }
+    return Math.max(baseEscolhida - 0.10, valor * 0.95);
+}
+
+/**
+ * Renderiza o painel visual com o resultado da precificação.
+ */
+function exibirResultadoPrecificacao(dados) {
+    // Remove painel anterior se existir
+    const painelAnterior = document.getElementById('painel-precificacao');
+    if (painelAnterior) painelAnterior.remove();
+
+    const {
+        categoria, conservacao, ehMarcaPremium, fatorConservacao,
+        precoFinal, precoMinimo, precoMaximo,
+        comissao, comissaoGoianita, repasseFornecedor, precoSugForecedor
+    } = dados;
+
+    const notaConservacao = `Estado "${conservacao}" → ${(fatorConservacao * 100).toFixed(0)}% do valor de referência de mercado`;
+    const notaMarca       = ehMarcaPremium ? '⭐ Marca premium reconhecida → +20% no valor percebido' : 'Marca não listada como premium (sem ajuste)';
+    const notaSugestao    = precoSugForecedor > 0
+        ? `Preço do fornecedor (${formatCurrency(precoSugForecedor)}) usado como âncora (60% do cálculo)`
+        : 'Preço calculado 100% pela tabela de mercado Goianita';
+
+    const painel = document.createElement('div');
+    painel.id = 'painel-precificacao';
+    painel.style.cssText = `
+        grid-column: span 2;
+        background: linear-gradient(135deg, #fdf8ee 0%, #fff 100%);
+        border: 2px solid var(--accent-gold);
+        border-radius: var(--radius-md);
+        padding: 28px 32px;
+        margin-top: 8px;
+        animation: fadeInPainel 0.35s ease;
+    `;
+
+    painel.innerHTML = `
+        <style>
+            @keyframes fadeInPainel {
+                from { opacity: 0; transform: translateY(-10px); }
+                to   { opacity: 1; transform: translateY(0); }
+            }
+            .prec-title {
+                font-size: 16px; font-weight: 700; color: var(--text-main);
+                display: flex; align-items: center; gap: 10px; margin-bottom: 20px;
+            }
+            .prec-title i { color: var(--accent-gold); font-size: 20px; }
+            .prec-grid {
+                display: grid; grid-template-columns: repeat(3, 1fr);
+                gap: 16px; margin-bottom: 20px;
+            }
+            @media(max-width: 700px) { .prec-grid { grid-template-columns: 1fr; } }
+            .prec-card {
+                background: white; border-radius: var(--radius-sm);
+                border: 1px solid var(--border-color); padding: 18px 20px; text-align: center;
+                transition: box-shadow 0.2s;
+            }
+            .prec-card:hover { box-shadow: var(--shadow-md); }
+            .prec-card .plabel {
+                font-size: 11px; font-weight: 600; text-transform: uppercase;
+                letter-spacing: 1px; color: var(--text-muted); display: block; margin-bottom: 8px;
+            }
+            .prec-card .pvalor {
+                font-size: 26px; font-weight: 700; display: block; line-height: 1;
+            }
+            .prec-card .psub {
+                font-size: 12px; color: var(--text-muted); display: block; margin-top: 6px;
+            }
+            .prec-faixa {
+                font-size: 13px; color: var(--text-muted); margin-bottom: 16px;
+                background: rgba(198,149,48,0.08); border-radius: 8px; padding: 10px 16px;
+            }
+            .prec-notas {
+                font-size: 12px; color: var(--text-muted);
+                display: flex; flex-direction: column; gap: 5px;
+            }
+            .prec-notas span::before { content: "• "; }
+            .prec-success { color: var(--accent-gold) !important; font-weight: 600; }
+        </style>
+
+        <div class="prec-title">
+            <i class="fa-solid fa-wand-magic-sparkles"></i>
+            Análise de Precificação — <em style="font-weight:400; margin-left:4px;">${categoria} · ${conservacao}</em>
+        </div>
+
+        <div class="prec-grid">
+            <div class="prec-card">
+                <span class="plabel">Preço Sugerido de Venda</span>
+                <span class="pvalor" style="color: var(--accent-gold);">${formatCurrency(precoFinal)}</span>
+                <span class="psub">Valor de etiqueta recomendado</span>
+            </div>
+            <div class="prec-card">
+                <span class="plabel">Comissão Goianita (${comissao}%)</span>
+                <span class="pvalor" style="color: var(--status-vendido);">${formatCurrency(comissaoGoianita)}</span>
+                <span class="psub">Receita da loja nesta peça</span>
+            </div>
+            <div class="prec-card">
+                <span class="plabel">Repasse ao Fornecedor</span>
+                <span class="pvalor" style="color: var(--status-pago);">${formatCurrency(repasseFornecedor)}</span>
+                <span class="psub">Valor líquido após venda</span>
+            </div>
+        </div>
+
+        <div class="prec-faixa">
+            📊 Faixa de preço para <strong>${categoria}</strong> neste estado:
+            de <strong>${formatCurrency(precoMinimo)}</strong> até <strong>${formatCurrency(precoMaximo)}</strong>
+        </div>
+
+        <div class="prec-notas">
+            <span>${notaConservacao}</span>
+            <span>${notaMarca}</span>
+            <span>${notaSugestao}</span>
+            <span class="prec-success">✅ Campos "Preço Sugerido" e "Preço de Venda" preenchidos automaticamente.</span>
+        </div>
+    `;
+
+    // Insere o painel logo após o campo "nome + botão"
+    const nomeGroup = document.getElementById('prod-nome')?.closest('.form-group');
+    if (nomeGroup) {
+        nomeGroup.after(painel);
+    } else {
+        document.getElementById('produto-form')?.appendChild(painel);
+    }
+
+    // Scroll suave até o resultado
+    setTimeout(() => painel.scrollIntoView({ behavior: 'smooth', block: 'nearest' }), 50);
 }
 
 function initMobileNav() {

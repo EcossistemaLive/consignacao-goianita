@@ -101,17 +101,27 @@
 
             const lowerUser = user.toLowerCase();
 
+            // Lista de e-mails de administradores pré-autorizados
+            const adminsAutorizados = [
+                'admin@goianita.com.br',
+                'debora@goianita.com.br',
+                'eduardfreitasg@gmail.com',
+                'goianita@terra.com.br'
+            ];
+
             // Detectar se o login é de administrador (qualquer e-mail ou atalhos)
             const isAdminEmail = lowerUser.includes('@') || 
                                  lowerUser === 'admin' || 
                                  lowerUser === 'eduard' || 
-                                 lowerUser === 'debora';
+                                 lowerUser === 'debora' ||
+                                 lowerUser === 'goianita';
             
             if (isAdminEmail) {
                 let adminEmail = lowerUser;
-                if (lowerUser === 'admin') adminEmail = 'admin@goianita.com.br';
-                else if (lowerUser === 'debora') adminEmail = 'debora@goianita.com.br';
-                else if (lowerUser === 'eduard') adminEmail = 'eduardfreitasg@gmail.com';
+                if (lowerUser === 'admin')     adminEmail = 'admin@goianita.com.br';
+                else if (lowerUser === 'debora')   adminEmail = 'debora@goianita.com.br';
+                else if (lowerUser === 'eduard')   adminEmail = 'eduardfreitasg@gmail.com';
+                else if (lowerUser === 'goianita') adminEmail = 'goianita@terra.com.br';
                 
                 if (typeof firebase === 'undefined' || !window.GoianitaAuth) {
                     // Fallback local se estiver offline
@@ -137,9 +147,30 @@
                         window.location.href = 'dashboard.html';
                     })
                     .catch(error => {
-                        alert('Falha no login do Administrador: E-mail ou senha incorretos.\n\nDetalhes: ' + error.message);
-                        btnSubmit.disabled = false;
-                        btnSubmit.textContent = 'Entrar no Sistema';
+                        // Primeiro acesso: se a conta não existe ainda, cria automaticamente
+                        // (somente para e-mails pré-autorizados na lista acima)
+                        if ((error.code === 'auth/user-not-found' || error.code === 'auth/invalid-credential')
+                            && adminsAutorizados.includes(adminEmail)) {
+
+                            btnSubmit.textContent = 'Criando conta (1º acesso)...';
+
+                            window.GoianitaAuth.createUserWithEmailAndPassword(adminEmail, pass)
+                                .then(() => {
+                                    sessionStorage.setItem('goianita_role', 'admin');
+                                    sessionStorage.setItem('goianita_email', adminEmail);
+                                    sessionStorage.removeItem('goianita_cliente_id');
+                                    window.location.href = 'dashboard.html';
+                                })
+                                .catch(createError => {
+                                    alert('Erro ao criar conta de administrador:\n' + createError.message);
+                                    btnSubmit.disabled = false;
+                                    btnSubmit.textContent = 'Entrar no Sistema';
+                                });
+                        } else {
+                            alert('Falha no login do Administrador: E-mail ou senha incorretos.\n\nDetalhes: ' + error.message);
+                            btnSubmit.disabled = false;
+                            btnSubmit.textContent = 'Entrar no Sistema';
+                        }
                     });
                 return;
             }

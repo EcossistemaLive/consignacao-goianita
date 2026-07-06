@@ -34,6 +34,13 @@ if (typeof firebase !== 'undefined') {
     });
 }
 
+/**
+ * FLAG DE MODO SIMULAÇÃO
+ * Em produção, defina como false para desativar a automação de vendas/repasses.
+ * Em desenvolvimento/demo, mantenha como true para ver dados se movimentando.
+ */
+const GOIANITA_SIMULATION_MODE = true;
+
 // Inicialização de chaves seguras no localStorage
 function initDatabase() {
     if (!localStorage.getItem(DB_KEYS.CLIENTES)) {
@@ -139,6 +146,8 @@ function startAutomationSimulation() {
                 }
             });
 
+            // CORREÇÃO: totalPago deve ser calculado aqui no escopo correto
+            const totalPago = pagsCliente.reduce((acc, p) => acc + (p.valor || 0), 0);
             const saldoDisponivel = Math.max(0, totalDisponivel - totalPago);
             
             if (saldoDisponivel > 50 && Math.random() > 0.6) {
@@ -178,8 +187,13 @@ function startAutomationSimulation() {
     }, 15000);
 }
 
-// Inicia automação em background
-startAutomationSimulation();
+// Inicia automação apenas no modo de simulação/demonstração
+if (GOIANITA_SIMULATION_MODE) {
+    startAutomationSimulation();
+    console.log('[Simulação] Modo de demonstração ATIVO. Vendas e repasses automáticos em execução a cada 15s.');
+} else {
+    console.log('[Produção] Modo de simulação DESATIVADO. Dados controlados manualmente.');
+}
 
 
 const db = {
