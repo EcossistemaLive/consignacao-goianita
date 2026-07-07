@@ -498,7 +498,7 @@ function renderProdutoNovo() {
                 subcategoria: document.getElementById('prod-subcat').value,
                 marca: document.getElementById('prod-marca').value,
                 ean: document.getElementById('prod-ean').value,
-                conservacao: document.getElementById('prod-conservacao').value,
+                conservacao: document.getElementById('prod-conservacao') ? document.getElementById('prod-conservacao').value : 'Em Avaliação',
                 defeitosAparentes: document.getElementById('prod-defeitos') ? document.getElementById('prod-defeitos').value : '',
                 pecasFaltantes: document.getElementById('prod-faltantes') ? document.getElementById('prod-faltantes').value : '',
                 peso: parseFloat(document.getElementById('prod-peso').value) || 0,
