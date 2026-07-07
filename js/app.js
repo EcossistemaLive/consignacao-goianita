@@ -586,6 +586,113 @@ function renderProdutoDetalhe() {
         });
     }
 
+    // Filtrar categorias de checklist baseado na categoria do produto
+    const categoryMap = {
+        'Cozinha e Mesa': ['1. Identificação e Documentos', '2. Registro Fotográfico', '3. Classificação Comercial', '4. Inspeção Física Geral', '5. Conjuntos, Jogos e Coleções', '6. Louças, Porcelanas e Cerâmicas', '7. Vidros e Cristais', '8. Inox e Outros Metais', '9. Panelas e Assadeiras', '10. Plástico, Acrílico e Silicone', '11. Madeira e Bambu', '13. Higienização e Precificação'],
+        'Decoração': ['1. Identificação e Documentos', '2. Registro Fotográfico', '3. Classificação Comercial', '4. Inspeção Física Geral', '5. Conjuntos, Jogos e Coleções', '6. Louças, Porcelanas e Cerâmicas', '7. Vidros e Cristais', '8. Inox e Outros Metais', '10. Plástico, Acrílico e Silicone', '11. Madeira e Bambu', '13. Higienização e Precificação'],
+        'Tapeçaria': ['1. Identificação e Documentos', '2. Registro Fotográfico', '3. Classificação Comercial', '4. Inspeção Física Geral', '13. Higienização e Precificação'],
+        'Banheiro': ['1. Identificação e Documentos', '2. Registro Fotográfico', '3. Classificação Comercial', '4. Inspeção Física Geral', '6. Louças, Porcelanas e Cerâmicas', '7. Vidros e Cristais', '8. Inox e Outros Metais', '10. Plástico, Acrílico e Silicone', '13. Higienização e Precificação'],
+        'Arte': ['1. Identificação e Documentos', '2. Registro Fotográfico', '3. Classificação Comercial', '4. Inspeção Física Geral', '11. Madeira e Bambu', '13. Higienização e Precificação'],
+        'Eletrodomésticos': ['1. Identificação e Documentos', '2. Registro Fotográfico', '3. Classificação Comercial', '4. Inspeção Física Geral', '8. Inox e Outros Metais', '10. Plástico, Acrílico e Silicone', '12. Eletrônicos e Eletroportáteis', '13. Higienização e Precificação']
+    };
+    
+    const allowedCategories = categoryMap[produto.categoria] || [];
+    if (allowedCategories.length > 0) {
+        document.querySelectorAll('.mega-accordion').forEach(acc => {
+            const catName = acc.querySelector('summary').textContent.trim();
+            if (allowedCategories.includes(catName)) {
+                acc.style.display = 'block';
+            } else {
+                acc.style.display = 'none';
+            }
+        });
+    } else {
+        document.querySelectorAll('.mega-accordion').forEach(acc => acc.style.display = 'block');
+    }
+
+    // Renderizar Galeria de Mídias
+    const mediaGallery = document.getElementById('media-gallery');
+    if (mediaGallery) {
+        mediaGallery.innerHTML = '';
+        if (produto.midias && produto.midias.length > 0) {
+            produto.midias.forEach(m => {
+                const el = document.createElement('div');
+                el.style.position = 'relative';
+                el.style.width = '100px';
+                el.style.height = '100px';
+                el.style.borderRadius = '8px';
+                el.style.overflow = 'hidden';
+                el.style.border = '1px solid #ccc';
+                
+                if (m.type.startsWith('video/')) {
+                    el.innerHTML = `<video src="${m.url}" style="width: 100%; height: 100%; object-fit: cover; background: #000;" controls></video>`;
+                } else {
+                    el.innerHTML = `<img src="${m.url}" style="width: 100%; height: 100%; object-fit: cover; cursor: pointer;" onclick="window.open('${m.url}', '_blank')">`;
+                }
+                
+                const btnApagar = document.createElement('button');
+                btnApagar.innerHTML = '<i class="fa-solid fa-trash"></i>';
+                btnApagar.style.position = 'absolute';
+                btnApagar.style.top = '4px';
+                btnApagar.style.right = '4px';
+                btnApagar.style.background = 'rgba(255, 0, 0, 0.8)';
+                btnApagar.style.color = 'white';
+                btnApagar.style.border = 'none';
+                btnApagar.style.borderRadius = '50%';
+                btnApagar.style.width = '24px';
+                btnApagar.style.height = '24px';
+                btnApagar.style.cursor = 'pointer';
+                btnApagar.onclick = () => apagarMidiaProduto(id, m.url);
+                el.appendChild(btnApagar);
+                
+                mediaGallery.appendChild(el);
+            });
+        } else {
+            mediaGallery.innerHTML = '<p style="font-size: 13px; color: #777;">Nenhuma mídia anexada.</p>';
+        }
+    }
+
+    // Upload de Mídias
+    const uploadInput = document.getElementById('media-upload-input');
+    if (uploadInput) {
+        uploadInput.addEventListener('change', async (e) => {
+            const files = e.target.files;
+            if (!files || files.length === 0) return;
+            
+            if (typeof firebase === 'undefined' || !window.GoianitaStorage) {
+                alert('Firebase Storage não inicializado ou sem internet.');
+                return;
+            }
+            
+            const statusLabel = document.getElementById('upload-status');
+            statusLabel.textContent = `Enviando ${files.length} arquivo(s)... (pode demorar)`;
+            uploadInput.disabled = true;
+            
+            produto.midias = produto.midias || [];
+            
+            try {
+                for (let i = 0; i < files.length; i++) {
+                    const file = files[i];
+                    const fileName = `${Date.now()}_${file.name}`;
+                    const storageRef = window.GoianitaStorage.ref(`produtos/${produto.id}/${fileName}`);
+                    const snapshot = await storageRef.put(file);
+                    const downloadUrl = await snapshot.ref.getDownloadURL();
+                    
+                    produto.midias.push({
+                        url: downloadUrl,
+                        type: file.type
+                    });
+                }
+                await window.GoianitaDB.produtos.save(produto);
+                statusLabel.textContent = 'Upload concluído com sucesso!';
+                setTimeout(() => window.location.reload(), 1500);
+            } catch (err) {
+                statusLabel.textContent = 'Erro no upload: ' + err.message;
+                uploadInput.disabled = false;
+            }
+        });
+    }
+
     if (statusSelect) {
         statusSelect.value = produto.status;
         statusSelect.addEventListener('change', () => {
@@ -620,6 +727,29 @@ function renderProdutoDetalhe() {
             </div>
         `).join('');
     }
+}
+
+// --- MÍDIA DO PRODUTO ---
+async function apagarMidiaProduto(produtoId, url) {
+    if (!confirm("Tem certeza que deseja apagar esta mídia permanentemente?")) return;
+    
+    const produto = window.GoianitaDB.produtos.getById(produtoId);
+    if (!produto || !produto.midias) return;
+
+    // Remover a URL do Firebase Storage, se estiver usando-o
+    if (typeof firebase !== 'undefined' && window.GoianitaStorage && url.includes('firebase')) {
+        try {
+            const fileRef = window.GoianitaStorage.refFromURL(url);
+            await fileRef.delete();
+        } catch (err) {
+            console.warn("Mídia já não existia no Storage ou erro de permissão:", err);
+        }
+    }
+
+    produto.midias = produto.midias.filter(m => m.url !== url);
+    await window.GoianitaDB.produtos.save(produto);
+    alert('Mídia removida com sucesso!');
+    window.location.reload();
 }
 
 // --- FINANCEIRO GERAL ---

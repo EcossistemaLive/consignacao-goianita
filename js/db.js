@@ -27,6 +27,7 @@ if (typeof firebase !== 'undefined') {
     }
     window.GoianitaAuth = firebase.auth();
     window.GoianitaFirestore = firebase.firestore();
+    window.GoianitaStorage = firebase.storage();
     
     // Habilitar persistência off-line se possível
     window.GoianitaFirestore.enablePersistence().catch(err => {
