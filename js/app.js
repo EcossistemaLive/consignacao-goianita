@@ -611,54 +611,38 @@ function renderProdutoNovo() {
     if (inputsChecklist.length > 0) {
         inputsChecklist.forEach(inp => {
             inp.addEventListener('change', () => {
-                let aprovados = [];
-                let classComercial = '';
-                
-                document.querySelectorAll('#etapa-1-checklist .mega-input:checked').forEach(chk => {
-                    const cat = chk.getAttribute('data-category');
-                    const label = chk.getAttribute('data-label');
-                    
-                    if (cat === '3. Classificação Comercial') {
-                        classComercial = label;
-                    } else {
-                        aprovados.push(label);
-                    }
-                });
+                const s = calcularScoreDeVenda();
                 
                 let desc = '';
-                if (classComercial) {
-                    desc += `Estado de Conservação: ${classComercial}\n\n`;
+                if (s.conservacao !== 'B' || document.querySelector('#etapa-1-checklist .mega-input[data-category="3. Classificação Comercial"]:checked')) {
+                    desc += `Estado de Conservação: Classe ${s.conservacao}\n\n`;
                 }
-                if (aprovados.length > 0) {
-                    desc += `Pontos validados na triagem:\n- ${aprovados.join('\n- ')}`;
+                if (s.qualidadesTexto.length > 0) {
+                    desc += `Pontos validados na triagem:\n- ${s.qualidadesTexto.join('\n- ')}`;
                 }
                 
                 if (descField && !descField.value.includes('IA')) { 
                     descField.value = desc.trim();
                 }
                 
-                // Recomendação em tempo real baseada primariamente na classificação comercial escolhida pelo avaliador
+                // Recomendação em tempo real baseada no Score de Venda
                 if (boxAprovacao) {
-                    if (classComercial.includes('RECUSADO')) {
-                        boxAprovacao.innerHTML = `<strong style="color: #d32f2f;"><i class="fa-solid fa-triangle-exclamation"></i> Recomendação: REPROVAR PRODUTO</strong><br><span style="font-size: 13px;">O avaliador marcou o produto como RECUSADO na classificação comercial.</span>`;
+                    if (s.status === 'REPROVADO') {
+                        boxAprovacao.innerHTML = `<strong style="color: #d32f2f;"><i class="fa-solid fa-triangle-exclamation"></i> Recomendação IA: REPROVAR PRODUTO (Score: ${s.score})</strong><br><span style="font-size: 13px;">O produto apresenta qualidades insuficientes ou restrições graves. Recomenda-se recusa automática.</span>`;
                         boxAprovacao.style.background = '#ffebee';
                         boxAprovacao.style.borderColor = '#ffcdd2';
                         const radReprovado = document.querySelector('input[name="triagem_resultado"][value="reprovado"]');
                         if (radReprovado) { radReprovado.checked = true; toggleEtapa2(false); }
-                    } else if (classComercial.includes('Classe C')) {
-                        boxAprovacao.innerHTML = `<strong style="color: #f57c00;"><i class="fa-solid fa-circle-exclamation"></i> Recomendação: AVALIAR COM CAUTELA</strong><br><span style="font-size: 13px;">Produto Classe C possui restrições fortes. Avalie se tem valor comercial antes de aprovar.</span>`;
+                    } else if (s.status === 'CAUTELA') {
+                        boxAprovacao.innerHTML = `<strong style="color: #f57c00;"><i class="fa-solid fa-circle-exclamation"></i> Recomendação IA: AVALIAR COM CAUTELA (Score: ${s.score})</strong><br><span style="font-size: 13px;">Venda moderada. Avalie se o produto tem valor comercial local antes de aprovar.</span>`;
                         boxAprovacao.style.background = '#fff3e0';
                         boxAprovacao.style.borderColor = '#ffe0b2';
-                    } else if (classComercial) {
-                        boxAprovacao.innerHTML = `<strong style="color: #388e3c;"><i class="fa-solid fa-check-circle"></i> Recomendação: APROVAR PRODUTO</strong><br><span style="font-size: 13px;">Produto em bom estado, apto para venda.</span>`;
+                    } else {
+                        boxAprovacao.innerHTML = `<strong style="color: #388e3c;"><i class="fa-solid fa-check-circle"></i> Recomendação IA: APROVAR PRODUTO (Score: ${s.score})</strong><br><span style="font-size: 13px;">Produto com alta liquidez, em bom estado e apto para venda.</span>`;
                         boxAprovacao.style.background = '#e8f5e9';
                         boxAprovacao.style.borderColor = '#c8e6c9';
                         const radAprovado = document.querySelector('input[name="triagem_resultado"][value="aprovado"]');
                         if (radAprovado) { radAprovado.checked = true; toggleEtapa2(true); }
-                    } else {
-                        boxAprovacao.innerHTML = `<em>Selecione a classificação comercial no checklist para ver a recomendação preliminar.</em>`;
-                        boxAprovacao.style.background = 'transparent';
-                        boxAprovacao.style.borderColor = 'transparent';
                     }
                 }
             });
@@ -1295,10 +1279,7 @@ function renderFinanceiro() {
  *   5. Âncoragem no preço sugerido pelo fornecedor (quando informado)
  *   6. Arredondamento para preços psicologicamente atraentes
  */
-function calcularPrecificacaoInteligente() {
-    const nome = (document.getElementById('prod-nome')?.value || '').trim();
-    const categoria = document.getElementById('prod-cat')?.value || 'Outros';
-    
+function calcularScoreDeVenda() {
     let conservacao = 'B';
     const classInput = document.querySelector('#etapa-1-checklist .mega-input[data-category="3. Classificação Comercial"]:checked');
     if (classInput) {
@@ -1310,12 +1291,54 @@ function calcularPrecificacaoInteligente() {
         else if (label.includes('RECUSADO')) conservacao = 'RECUSADO';
     }
 
+    const marca = (document.getElementById('prod-marca')?.value || '').trim().toLowerCase();
+    const marcasPremium = [
+        'porto brasil', 'tramontina', 'le creuset', 'oxford', 'lyor',
+        'wolff', 'vista alegre', 'schmidt', 'brinox', 'bon gourmet',
+        'hazan', 'royal prestige', 'heritage', 'panelux', 'coup', 'brava'
+    ];
+    const ehMarcaPremium = marcasPremium.some(m => marca.includes(m));
+
+    let qtdQualidades = 0;
+    let qualidadesTexto = [];
+    document.querySelectorAll('#etapa-1-checklist .mega-input:checked').forEach(chk => {
+        const cat = chk.getAttribute('data-category');
+        if (cat !== '3. Classificação Comercial') {
+            qtdQualidades++;
+            qualidadesTexto.push(chk.getAttribute('data-label'));
+        }
+    });
+
+    let scoreVenda = 60; // Nota base 60
+    if (conservacao === 'A+') scoreVenda += 20;
+    if (conservacao === 'A') scoreVenda += 10;
+    if (conservacao === 'C') scoreVenda -= 30;
+    if (ehMarcaPremium) scoreVenda += 15;
+    scoreVenda += Math.min(20, qtdQualidades * 2); 
+    
+    if (conservacao === 'RECUSADO') scoreVenda = 0;
+
+    scoreVenda = Math.max(0, Math.min(100, scoreVenda));
+
+    let status = 'APROVADO';
+    if (scoreVenda < 40) status = 'REPROVADO';
+    else if (scoreVenda < 70) status = 'CAUTELA';
+
+    return { score: scoreVenda, status, conservacao, ehMarcaPremium, qtdQualidades, qualidadesTexto, marca };
+}
+
+function calcularPrecificacaoInteligente() {
+    const nome = (document.getElementById('prod-nome')?.value || '').trim();
+    const categoria = document.getElementById('prod-cat')?.value || 'Outros';
+    
+    const s = calcularScoreDeVenda();
+    const { conservacao, ehMarcaPremium, qtdQualidades, qualidadesTexto, score: scoreVenda, marca } = s;
+
     if (conservacao === 'RECUSADO') {
         alert('Este produto foi marcado como RECUSADO na classificação comercial. O processo de precificação inteligente não será aplicado.');
         return;
     }
 
-    const marca = (document.getElementById('prod-marca')?.value || '').trim().toLowerCase();
     const precoSugForecedor = parseFloat(document.getElementById('prod-preco-sug')?.value) || 0;
     const comissao = parseFloat(document.getElementById('prod-comissao')?.value) || 50;
     
@@ -1338,13 +1361,6 @@ function calcularPrecificacaoInteligente() {
     };
 
     const multConservacao = { 'A+': 0.85, 'A': 0.70, 'B': 0.50, 'C': 0.35 };
-
-    const marcasPremium = [
-        'porto brasil', 'tramontina', 'le creuset', 'oxford', 'lyor',
-        'wolff', 'vista alegre', 'schmidt', 'brinox', 'bon gourmet',
-        'hazan', 'royal prestige', 'heritage', 'panelux', 'coup', 'brava'
-    ];
-    const ehMarcaPremium = marcasPremium.some(m => marca.includes(m));
     const multMarca = ehMarcaPremium ? 1.25 : 1.00;
 
     const nomeLower = nome.toLowerCase();
@@ -1353,25 +1369,7 @@ function calcularPrecificacaoInteligente() {
     if (nomeLower.includes('completo') || nomeLower.includes('peças') || nomeLower.includes('pçs')) multNome *= 1.10;
     if (nomeLower.includes('antigo') || nomeLower.includes('vintage') || nomeLower.includes('colecionável')) multNome *= 1.25;
 
-    let qtdQualidades = 0;
-    let qualidadesTexto = [];
-    document.querySelectorAll('#etapa-1-checklist .mega-input:checked').forEach(chk => {
-        const cat = chk.getAttribute('data-category');
-        if (cat !== '3. Classificação Comercial') {
-            qtdQualidades++;
-            qualidadesTexto.push(chk.getAttribute('data-label'));
-        }
-    });
-
     const bonusChecklist = 1.00 + Math.min(0.20, (qtdQualidades * 0.02));
-
-    let scoreVenda = 50;
-    if (conservacao === 'A+') scoreVenda += 25;
-    if (conservacao === 'A') scoreVenda += 15;
-    if (conservacao === 'C') scoreVenda -= 20;
-    if (ehMarcaPremium) scoreVenda += 15;
-    scoreVenda += Math.min(10, qtdQualidades); 
-    scoreVenda = Math.max(0, Math.min(100, scoreVenda));
 
     const ref = tabelaCategoria[categoria] || tabelaCategoria['Outros'];
     const fatorConservacao = multConservacao[conservacao] || 0.50;
