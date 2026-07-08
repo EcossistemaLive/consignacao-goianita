@@ -612,31 +612,16 @@ function renderProdutoNovo() {
         inputsChecklist.forEach(inp => {
             inp.addEventListener('change', () => {
                 let aprovados = [];
-                let falhos = [];
                 let classComercial = '';
                 
-                document.querySelectorAll('#etapa-1-checklist .mega-accordion[style*="display: block"] .mega-input, #etapa-1-checklist .mega-accordion:not([style*="display: none"]) .mega-input').forEach(chk => {
-                    // we need to only count visible ones if possible, but actually we should just count all checked.
-                    // Wait, the filter hides the accordion but not the inputs. 
-                    // Let's just check if the accordion parent is block or not hidden.
-                    const parentAcc = chk.closest('details');
-                    if (parentAcc && parentAcc.style.display === 'none') return;
-                    
+                document.querySelectorAll('#etapa-1-checklist .mega-input:checked').forEach(chk => {
                     const cat = chk.getAttribute('data-category');
                     const label = chk.getAttribute('data-label');
                     
                     if (cat === '3. Classificação Comercial') {
-                        if (chk.checked) classComercial = label;
-                        return;
-                    }
-                    if (cat === '1. Identificação e Documentos' || cat === '2. Registro Fotográfico' || cat === '13. Higienização e Precificação') {
-                        return; // não colocar na descrição
-                    }
-                    
-                    if (chk.checked) {
+                        classComercial = label;
+                    } else {
                         aprovados.push(label);
-                    } else if (chk.type === 'checkbox') {
-                        falhos.push(label);
                     }
                 });
                 
@@ -644,31 +629,36 @@ function renderProdutoNovo() {
                 if (classComercial) {
                     desc += `Estado de Conservação: ${classComercial}\n\n`;
                 }
-                if (falhos.length > 0) {
-                    desc += `Ressalvas identificadas:\n- ${falhos.join('\n- ')}\n\n`;
-                }
                 if (aprovados.length > 0) {
-                    desc += `Pontos positivos / Acessórios:\n- ${aprovados.join('\n- ')}`;
+                    desc += `Pontos validados na triagem:\n- ${aprovados.join('\n- ')}`;
                 }
                 
-                if (descField) {
+                if (descField && !descField.value.includes('IA')) { 
                     descField.value = desc.trim();
                 }
                 
-                // Recomendação
+                // Recomendação em tempo real baseada primariamente na classificação comercial escolhida pelo avaliador
                 if (boxAprovacao) {
-                    if (classComercial.includes('RECUSADO') || classComercial.includes('Classe C') || falhos.length >= 3) {
-                        boxAprovacao.innerHTML = `<strong style="color: #d32f2f;"><i class="fa-solid fa-triangle-exclamation"></i> Recomendação: REPROVAR PRODUTO</strong><br><span style="font-size: 13px;">O produto apresenta ressalvas graves ou muitos defeitos. Recomenda-se recusar.</span>`;
+                    if (classComercial.includes('RECUSADO')) {
+                        boxAprovacao.innerHTML = `<strong style="color: #d32f2f;"><i class="fa-solid fa-triangle-exclamation"></i> Recomendação: REPROVAR PRODUTO</strong><br><span style="font-size: 13px;">O avaliador marcou o produto como RECUSADO na classificação comercial.</span>`;
                         boxAprovacao.style.background = '#ffebee';
                         boxAprovacao.style.borderColor = '#ffcdd2';
-                    } else if (falhos.length > 0) {
-                        boxAprovacao.innerHTML = `<strong style="color: #f57c00;"><i class="fa-solid fa-circle-exclamation"></i> Recomendação: AVALIAR COM CAUTELA</strong><br><span style="font-size: 13px;">O produto possui ressalvas. Analise se vale a pena comercializar.</span>`;
+                        const radReprovado = document.querySelector('input[name="triagem_resultado"][value="reprovado"]');
+                        if (radReprovado) { radReprovado.checked = true; toggleEtapa2(false); }
+                    } else if (classComercial.includes('Classe C')) {
+                        boxAprovacao.innerHTML = `<strong style="color: #f57c00;"><i class="fa-solid fa-circle-exclamation"></i> Recomendação: AVALIAR COM CAUTELA</strong><br><span style="font-size: 13px;">Produto Classe C possui restrições fortes. Avalie se tem valor comercial antes de aprovar.</span>`;
                         boxAprovacao.style.background = '#fff3e0';
                         boxAprovacao.style.borderColor = '#ffe0b2';
-                    } else {
-                        boxAprovacao.innerHTML = `<strong style="color: #388e3c;"><i class="fa-solid fa-check-circle"></i> Recomendação: APROVAR PRODUTO</strong><br><span style="font-size: 13px;">Produto em ótimo estado, apto para venda imediata.</span>`;
+                    } else if (classComercial) {
+                        boxAprovacao.innerHTML = `<strong style="color: #388e3c;"><i class="fa-solid fa-check-circle"></i> Recomendação: APROVAR PRODUTO</strong><br><span style="font-size: 13px;">Produto em bom estado, apto para venda.</span>`;
                         boxAprovacao.style.background = '#e8f5e9';
                         boxAprovacao.style.borderColor = '#c8e6c9';
+                        const radAprovado = document.querySelector('input[name="triagem_resultado"][value="aprovado"]');
+                        if (radAprovado) { radAprovado.checked = true; toggleEtapa2(true); }
+                    } else {
+                        boxAprovacao.innerHTML = `<em>Selecione a classificação comercial no checklist para ver a recomendação preliminar.</em>`;
+                        boxAprovacao.style.background = 'transparent';
+                        boxAprovacao.style.borderColor = 'transparent';
                     }
                 }
             });
@@ -1309,7 +1299,6 @@ function calcularPrecificacaoInteligente() {
     const nome = (document.getElementById('prod-nome')?.value || '').trim();
     const categoria = document.getElementById('prod-cat')?.value || 'Outros';
     
-    // Extrai Conservação direto do Mega Checklist
     let conservacao = 'B';
     const classInput = document.querySelector('#etapa-1-checklist .mega-input[data-category="3. Classificação Comercial"]:checked');
     if (classInput) {
@@ -1318,31 +1307,23 @@ function calcularPrecificacaoInteligente() {
         else if (label.includes('Classe A')) conservacao = 'A';
         else if (label.includes('Classe B')) conservacao = 'B';
         else if (label.includes('Classe C')) conservacao = 'C';
+        else if (label.includes('RECUSADO')) conservacao = 'RECUSADO';
+    }
+
+    if (conservacao === 'RECUSADO') {
+        alert('Este produto foi marcado como RECUSADO na classificação comercial. O processo de precificação inteligente não será aplicado.');
+        return;
     }
 
     const marca = (document.getElementById('prod-marca')?.value || '').trim().toLowerCase();
     const precoSugForecedor = parseFloat(document.getElementById('prod-preco-sug')?.value) || 0;
     const comissao = parseFloat(document.getElementById('prod-comissao')?.value) || 50;
     
-    // Penalidade por riscos/defeitos: Se checkboxes positivos da categoria não foram marcados
-    let faltantesOuDefeitosCount = 0;
-    document.querySelectorAll('#etapa-1-checklist .mega-accordion[style*="display: block"] .mega-input').forEach(inp => {
-        const cat = inp.getAttribute('data-category');
-        if (cat && cat !== '1. Identificação e Documentos' && cat !== '2. Registro Fotográfico' && cat !== '3. Classificação Comercial' && cat !== '13. Higienização e Precificação') {
-            if (!inp.checked) faltantesOuDefeitosCount++;
-        }
-    });
-
-    // Cada item falho no checklist subtrai 5% do valor (penalidade máxima até bater 60%)
-    const penalidadeRisco = (faltantesOuDefeitosCount > 0) ? Math.max(0.60, 1.00 - (faltantesOuDefeitosCount * 0.05)) : 1.00;
-
     if (!nome) {
         alert('Por favor, preencha o nome do produto antes de usar a precificação inteligente.');
         return;
     }
 
-    // --- 1. TABELA DE REFERÊNCIA DE PREÇOS POR CATEGORIA ---
-    // Faixas baseadas no mix de produtos da Casas Goianita (artigos domésticos semi-novos)
     const tabelaCategoria = {
         'Cozinha e Mesa':   { min: 40,  med: 90,  max: 350  },
         'Decoração':        { min: 30,  med: 80,  max: 400  },
@@ -1356,61 +1337,79 @@ function calcularPrecificacaoInteligente() {
         'Outros':           { min: 25,  med: 70,  max: 300  }
     };
 
-    // --- 2. MULTIPLICADOR POR ESTADO DE CONSERVAÇÃO ---
-    const multConservacao = { 'A+': 0.80, 'A': 0.65, 'B': 0.50, 'C': 0.35 };
+    const multConservacao = { 'A+': 0.85, 'A': 0.70, 'B': 0.50, 'C': 0.35 };
 
-    // --- 3. MARCAS PREMIUM (aumentam o valor percebido) ---
     const marcasPremium = [
         'porto brasil', 'tramontina', 'le creuset', 'oxford', 'lyor',
         'wolff', 'vista alegre', 'schmidt', 'brinox', 'bon gourmet',
         'hazan', 'royal prestige', 'heritage', 'panelux', 'coup', 'brava'
     ];
     const ehMarcaPremium = marcasPremium.some(m => marca.includes(m));
-    const multMarca = ehMarcaPremium ? 1.20 : 1.00;
+    const multMarca = ehMarcaPremium ? 1.25 : 1.00;
 
-    // --- 4. BOOST POR PALAVRAS-CHAVE NO NOME ---
     const nomeLower = nome.toLowerCase();
     let multNome = 1.0;
     if (nomeLower.includes('conjunto') || nomeLower.includes('kit') || nomeLower.includes('jogo')) multNome = 1.15;
     if (nomeLower.includes('completo') || nomeLower.includes('peças') || nomeLower.includes('pçs')) multNome *= 1.10;
     if (nomeLower.includes('antigo') || nomeLower.includes('vintage') || nomeLower.includes('colecionável')) multNome *= 1.25;
 
-    // --- 5. CÁLCULO DO PREÇO BASE ---
+    let qtdQualidades = 0;
+    let qualidadesTexto = [];
+    document.querySelectorAll('#etapa-1-checklist .mega-input:checked').forEach(chk => {
+        const cat = chk.getAttribute('data-category');
+        if (cat !== '3. Classificação Comercial') {
+            qtdQualidades++;
+            qualidadesTexto.push(chk.getAttribute('data-label'));
+        }
+    });
+
+    const bonusChecklist = 1.00 + Math.min(0.20, (qtdQualidades * 0.02));
+
+    let scoreVenda = 50;
+    if (conservacao === 'A+') scoreVenda += 25;
+    if (conservacao === 'A') scoreVenda += 15;
+    if (conservacao === 'C') scoreVenda -= 20;
+    if (ehMarcaPremium) scoreVenda += 15;
+    scoreVenda += Math.min(10, qtdQualidades); 
+    scoreVenda = Math.max(0, Math.min(100, scoreVenda));
+
     const ref = tabelaCategoria[categoria] || tabelaCategoria['Outros'];
-    const fatorConservacao = (multConservacao[conservacao] || 0.50) * penalidadeRisco;
+    const fatorConservacao = multConservacao[conservacao] || 0.50;
 
-    // Ponto de partida: mediana da categoria, ajustada por todos os fatores
-    let precoBase = ref.med * fatorConservacao * multMarca * multNome;
+    let precoBase = ref.med * fatorConservacao * multMarca * multNome * bonusChecklist;
 
-    // Âncora no preço sugerido pelo fornecedor (quando informado)
     if (precoSugForecedor > 0) {
         const ancoraSugerida = precoSugForecedor * fatorConservacao * 0.85;
-        // 60% âncora do fornecedor + 40% tabela de mercado
-        precoBase = (ancoraSugerida * 0.6) + (precoBase * 0.4);
+        precoBase = (ancoraSugerida * 0.5) + (precoBase * 0.5);
     }
 
-    // Clampar dentro da faixa da categoria
     precoBase = Math.max(ref.min, Math.min(ref.max, precoBase));
 
-    // Arredondar para preço psicologicamente atraente
     const precoFinal  = arredondarPrecoComercial(precoBase);
     const precoMinimo = arredondarPrecoComercial(ref.min * fatorConservacao * multMarca);
     const precoMaximo = arredondarPrecoComercial(ref.max * fatorConservacao * multMarca);
 
-    // --- 6. CÁLCULO DE REPASSE ---
     const comissaoGoianita  = (precoFinal * comissao) / 100;
     const repasseFornecedor = precoFinal - comissaoGoianita;
 
-    // Preencher campos do formulário
     if (document.getElementById('prod-preco-sug')) document.getElementById('prod-preco-sug').value = precoFinal.toFixed(2);
     if (document.getElementById('prod-preco'))     document.getElementById('prod-preco').value     = precoFinal.toFixed(2);
 
-    // Exibir painel visual de resultado
+    const descField = document.getElementById('prod-desc');
+    if (descField) {
+        const marcaTxt = marca ? `da marca **${marca.toUpperCase()}**` : `de excelente qualidade`;
+        const qualidadeTxt = qualidadesTexto.length > 0 
+            ? `\n\n**Destaques:**\n- ${qualidadesTexto.slice(0, 6).join('\n- ')}` 
+            : '';
+        const intro = `✨ **${nome.toUpperCase()}** ✨\n\nEste incrível item ${marcaTxt} encontra-se em estado de conservação **${conservacao}**. Ideal para quem busca bom gosto e economia inteligente na Casas Goianita.`;
+        descField.value = `${intro}${qualidadeTxt}\n\n✅ *Avaliado e Precificado pela IA Goianita*`.trim();
+    }
+
     exibirResultadoPrecificacao({
         categoria, conservacao, ehMarcaPremium, fatorConservacao,
         precoFinal, precoMinimo, precoMaximo,
         comissao, comissaoGoianita, repasseFornecedor, precoSugForecedor,
-        penalidadeRisco
+        scoreVenda, bonusChecklist
     });
 }
 
@@ -1433,11 +1432,7 @@ function arredondarPrecoComercial(valor) {
     return Math.max(baseEscolhida - 0.10, valor * 0.95);
 }
 
-/**
- * Renderiza o painel visual com o resultado da precificação.
- */
 function exibirResultadoPrecificacao(dados) {
-    // Remove painel anterior se existir
     const painelAnterior = document.getElementById('painel-precificacao');
     if (painelAnterior) painelAnterior.remove();
 
@@ -1445,14 +1440,15 @@ function exibirResultadoPrecificacao(dados) {
         categoria, conservacao, ehMarcaPremium, fatorConservacao,
         precoFinal, precoMinimo, precoMaximo,
         comissao, comissaoGoianita, repasseFornecedor, precoSugForecedor,
-        penalidadeRisco
+        scoreVenda, bonusChecklist
     } = dados;
 
-    const notaConservacao = `Estado "${conservacao}" → ${(fatorConservacao * 100).toFixed(0)}% do valor base de mercado ${penalidadeRisco < 1 ? '(penalidade por avaria aplicada)' : ''}`;
-    const notaMarca       = ehMarcaPremium ? '⭐ Marca premium reconhecida → +20% no valor percebido' : 'Marca não listada como premium (sem ajuste)';
-    const notaSugestao    = precoSugForecedor > 0
-        ? `Preço do fornecedor (${formatCurrency(precoSugForecedor)}) usado como âncora (60% do cálculo)`
-        : 'Preço calculado 100% pela tabela de mercado Goianita';
+    let scoreColor = scoreVenda >= 80 ? '#388e3c' : (scoreVenda >= 50 ? '#f57c00' : '#d32f2f');
+    let scoreLabel = scoreVenda >= 80 ? 'ALTA LIQUIDEZ' : (scoreVenda >= 50 ? 'VENDA MODERADA' : 'VENDA DIFÍCIL');
+
+    const notaConservacao = `Estado "${conservacao}" → ${(fatorConservacao * 100).toFixed(0)}% do valor de mercado`;
+    const notaMarca       = ehMarcaPremium ? '🌟 Marca premium reconhecida → +25% no valor' : 'Marca convencional (sem multiplicador extra)';
+    const notaChecklist   = bonusChecklist > 1.0 ? `✅ Qualidades atestadas no checklist → +${((bonusChecklist - 1)*100).toFixed(0)}% de bônus` : 'Sem qualidades extras marcadas';
 
     const painel = document.createElement('div');
     painel.id = 'painel-precificacao';
@@ -1478,10 +1474,11 @@ function exibirResultadoPrecificacao(dados) {
             }
             .prec-title i { color: var(--accent-gold); font-size: 20px; }
             .prec-grid {
-                display: grid; grid-template-columns: repeat(3, 1fr);
+                display: grid; grid-template-columns: repeat(4, 1fr);
                 gap: 16px; margin-bottom: 20px;
             }
-            @media(max-width: 700px) { .prec-grid { grid-template-columns: 1fr; } }
+            @media(max-width: 800px) { .prec-grid { grid-template-columns: repeat(2, 1fr); } }
+            @media(max-width: 500px) { .prec-grid { grid-template-columns: 1fr; } }
             .prec-card {
                 background: white; border-radius: var(--radius-sm);
                 border: 1px solid var(--border-color); padding: 18px 20px; text-align: center;
@@ -1512,41 +1509,45 @@ function exibirResultadoPrecificacao(dados) {
 
         <div class="prec-title">
             <i class="fa-solid fa-wand-magic-sparkles"></i>
-            Análise de Precificação — <em style="font-weight:400; margin-left:4px;">${categoria} · ${conservacao}</em>
+            Análise Inteligente Concluída — <em style="font-weight:400; margin-left:4px;">${categoria} · ${conservacao}</em>
         </div>
 
         <div class="prec-grid">
             <div class="prec-card">
-                <span class="plabel">Preço Sugerido de Venda</span>
+                <span class="plabel">Score de Venda</span>
+                <span class="pvalor" style="color: ${scoreColor};">${scoreVenda}/100</span>
+                <span class="psub" style="font-weight: bold; color: ${scoreColor};">${scoreLabel}</span>
+            </div>
+            <div class="prec-card">
+                <span class="plabel">Preço de Etiqueta</span>
                 <span class="pvalor" style="color: var(--accent-gold);">${formatCurrency(precoFinal)}</span>
-                <span class="psub">Valor de etiqueta recomendado</span>
+                <span class="psub">Sugerido para Venda</span>
             </div>
             <div class="prec-card">
-                <span class="plabel">Comissão Goianita (${comissao}%)</span>
+                <span class="plabel">Comissão (${comissao}%)</span>
                 <span class="pvalor" style="color: var(--status-vendido);">${formatCurrency(comissaoGoianita)}</span>
-                <span class="psub">Receita da loja nesta peça</span>
+                <span class="psub">Receita da loja</span>
             </div>
             <div class="prec-card">
-                <span class="plabel">Repasse ao Fornecedor</span>
+                <span class="plabel">Repasse</span>
                 <span class="pvalor" style="color: var(--status-pago);">${formatCurrency(repasseFornecedor)}</span>
-                <span class="psub">Valor líquido após venda</span>
+                <span class="psub">Líquido do fornecedor</span>
             </div>
         </div>
 
         <div class="prec-faixa">
-            📊 Faixa de preço para <strong>${categoria}</strong> neste estado:
+            📊 Faixa de preço base para <strong>${categoria}</strong>:
             de <strong>${formatCurrency(precoMinimo)}</strong> até <strong>${formatCurrency(precoMaximo)}</strong>
         </div>
 
         <div class="prec-notas">
             <span>${notaConservacao}</span>
             <span>${notaMarca}</span>
-            <span>${notaSugestao}</span>
-            <span class="prec-success">✅ Campos "Preço Sugerido" e "Preço de Venda" preenchidos automaticamente.</span>
+            <span>${notaChecklist}</span>
+            <span class="prec-success">✅ Descrição persuasiva gerada e campos de preço preenchidos.</span>
         </div>
     `;
 
-    // Insere o painel logo após o bloco de precificação
     const blocoIa = document.getElementById('bloco-ia-precificacao');
     if (blocoIa) {
         blocoIa.after(painel);
