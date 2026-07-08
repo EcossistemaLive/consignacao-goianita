@@ -705,8 +705,16 @@ function renderProdutoDetalhe() {
                     const responseData = await response.json();
                     
                     if (responseData.success) {
+                        // Converter URL do visualizador do Drive para URL de imagem direta
+                        // Exemplo: https://drive.google.com/file/d/12345/view -> https://drive.google.com/uc?export=view&id=12345
+                        let directUrl = responseData.url;
+                        const match = directUrl.match(/\/d\/([a-zA-Z0-9-_]+)/);
+                        if (match && match[1]) {
+                            directUrl = `https://drive.google.com/uc?export=view&id=${match[1]}`;
+                        }
+
                         produto.midias.push({
-                            url: responseData.url,
+                            url: directUrl,
                             type: file.type
                         });
                     } else {
