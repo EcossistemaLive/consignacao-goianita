@@ -624,10 +624,16 @@ function renderProdutoDetalhe() {
                 el.style.overflow = 'hidden';
                 el.style.border = '1px solid #ccc';
                 
-                if (m.type.startsWith('video/')) {
+                if (m.type && m.type.startsWith('video/')) {
                     el.innerHTML = `<video src="${m.url}" style="width: 100%; height: 100%; object-fit: cover; background: #000;" controls></video>`;
                 } else {
-                    el.innerHTML = `<img src="${m.url}" style="width: 100%; height: 100%; object-fit: cover; cursor: pointer;" onclick="window.open('${m.url}', '_blank')">`;
+                    let thumbUrl = m.url;
+                    // Tenta extrair ID do Google Drive de vários formatos para gerar a miniatura
+                    const driveMatch = m.url.match(/id=([a-zA-Z0-9-_]+)/) || m.url.match(/\/d\/([a-zA-Z0-9-_]+)/);
+                    if (driveMatch && driveMatch[1]) {
+                        thumbUrl = `https://drive.google.com/thumbnail?id=${driveMatch[1]}&sz=w800`;
+                    }
+                    el.innerHTML = `<img src="${thumbUrl}" style="width: 100%; height: 100%; object-fit: cover; cursor: pointer;" onclick="window.open('${m.url}', '_blank')">`;
                 }
                 
                 const btnApagar = document.createElement('button');
