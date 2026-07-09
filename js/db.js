@@ -82,15 +82,7 @@ function setupFirestoreSync() {
                 const firebaseClientes = [];
                 snapshot.forEach(doc => firebaseClientes.push({ id: doc.id, ...doc.data() }));
                 
-                const localClientes = JSON.parse(localStorage.getItem(DB_KEYS.CLIENTES) || '[]');
-                const toUpload = localClientes.filter(localC => !firebaseClientes.some(fbC => fbC.id === localC.id));
-                
-                toUpload.forEach(async (c) => {
-                    try { await window.GoianitaFirestore.collection('clientes').doc(c.id).set(c, {merge: true}); } catch(e){}
-                });
-
-                const merged = [...firebaseClientes, ...toUpload];
-                localStorage.setItem(DB_KEYS.CLIENTES, JSON.stringify(merged));
+                localStorage.setItem(DB_KEYS.CLIENTES, JSON.stringify(firebaseClientes));
                 
                 window.dispatchEvent(new Event('goianitaDataChanged'));
                 if(syncCount < 3) checkSync();
@@ -101,15 +93,7 @@ function setupFirestoreSync() {
                 const firebaseProdutos = [];
                 snapshot.forEach(doc => firebaseProdutos.push({ id: doc.id, ...doc.data() }));
                 
-                const localProdutos = JSON.parse(localStorage.getItem(DB_KEYS.PRODUTOS) || '[]');
-                const toUpload = localProdutos.filter(localP => !firebaseProdutos.some(fbP => fbP.id === localP.id));
-                
-                toUpload.forEach(async (p) => {
-                    try { await window.GoianitaFirestore.collection('produtos').doc(p.id).set(p, {merge: true}); } catch(e){}
-                });
-
-                const merged = [...firebaseProdutos, ...toUpload];
-                localStorage.setItem(DB_KEYS.PRODUTOS, JSON.stringify(merged));
+                localStorage.setItem(DB_KEYS.PRODUTOS, JSON.stringify(firebaseProdutos));
                 
                 window.dispatchEvent(new Event('goianitaDataChanged'));
                 if(syncCount < 3) checkSync();
@@ -120,15 +104,7 @@ function setupFirestoreSync() {
                 const firebasePagamentos = [];
                 snapshot.forEach(doc => firebasePagamentos.push({ id: doc.id, ...doc.data() }));
                 
-                const localPagamentos = JSON.parse(localStorage.getItem(DB_KEYS.PAGAMENTOS) || '[]');
-                const toUpload = localPagamentos.filter(localP => !firebasePagamentos.some(fbP => fbP.id === localP.id));
-                
-                toUpload.forEach(async (p) => {
-                    try { await window.GoianitaFirestore.collection('pagamentos').doc(p.id).set(p, {merge: true}); } catch(e){}
-                });
-
-                const merged = [...firebasePagamentos, ...toUpload];
-                localStorage.setItem(DB_KEYS.PAGAMENTOS, JSON.stringify(merged));
+                localStorage.setItem(DB_KEYS.PAGAMENTOS, JSON.stringify(firebasePagamentos));
                 
                 window.dispatchEvent(new Event('goianitaDataChanged'));
                 if(syncCount < 3) checkSync();
