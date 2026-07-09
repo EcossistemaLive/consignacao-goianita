@@ -365,7 +365,7 @@ function renderClienteDetalhe() {
                         });
                     }
                 } else {
-                    alert("Valor inválido ou maior que o saldo pendente.");
+                    alert("Valor inválido.");
                 }
             }
         });
@@ -570,7 +570,7 @@ function renderProdutoNovo() {
         form.addEventListener('submit', (e) => {
             e.preventDefault();
             
-            
+            const btnSubmit = form.querySelector('button[type="submit"]');
             
             // Validação manual
             const nomeStr = document.getElementById('prod-nome').value.trim();
@@ -629,7 +629,6 @@ function renderProdutoNovo() {
             };
             
             // Exibir loading ou desativar botão
-            const btnSubmit = form.querySelector('button[type="submit"]');
             const originalText = btnSubmit.textContent;
             btnSubmit.disabled = true;
             btnSubmit.textContent = 'Gravando...';
