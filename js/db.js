@@ -274,8 +274,12 @@ const db = {
 
             const cleanCliente = { ...clienteFinal };
             delete cleanCliente.senha;
-
-            await docRef.set(cleanCliente, { merge: true });
+            try {
+                await docRef.set(cleanCliente, { merge: true });
+            } catch (err) {
+                console.error("[Firebase] Erro ao salvar cliente:", err);
+                alert("Aviso: Falha ao salvar no banco em nuvem. Salvo apenas localmente.");
+            }
             
             const clientesLocais = db.clientes.getAll();
             const idx = clientesLocais.findIndex(c => c.id === id);
@@ -288,7 +292,11 @@ const db = {
         },
         delete: async (id) => {
             if (typeof firebase !== 'undefined' && window.GoianitaFirestore) {
-                await window.GoianitaFirestore.collection('clientes').doc(id).delete();
+                try {
+                    await window.GoianitaFirestore.collection('clientes').doc(id).delete();
+                } catch(err) {
+                    console.error("[Firebase] Erro ao excluir cliente:", err);
+                }
             }
             const clientes = db.clientes.getAll().filter(c => c.id !== id);
             localStorage.setItem(DB_KEYS.CLIENTES, JSON.stringify(clientes));
@@ -382,8 +390,8 @@ const db = {
             try {
                 await docRef.set(produtoFinal, { merge: true });
             } catch(e) {
-                console.error("Erro de permissão no Firestore, salvando apenas localmente: ", e);
-                // Força o salvamento local para não travar a UI
+                console.error("Erro no Firestore, salvando apenas localmente: ", e);
+                alert("Aviso: Falha ao salvar no banco em nuvem. Salvo apenas localmente.");
             }
 
             const produtosLocais = db.produtos.getAll();
@@ -397,7 +405,11 @@ const db = {
         },
         delete: async (id) => {
             if (typeof firebase !== 'undefined' && window.GoianitaFirestore) {
-                await window.GoianitaFirestore.collection('produtos').doc(id).delete();
+                try {
+                    await window.GoianitaFirestore.collection('produtos').doc(id).delete();
+                } catch(err) {
+                    console.error("[Firebase] Erro ao excluir produto:", err);
+                }
             }
             const produtos = db.produtos.getAll().filter(p => p.id !== id);
             localStorage.setItem(DB_KEYS.PRODUTOS, JSON.stringify(produtos));
@@ -431,8 +443,12 @@ const db = {
                 data: data,
                 status: 'Realizado'
             };
-
-            await docRef.set(pagamentoFinal);
+            try {
+                await docRef.set(pagamentoFinal);
+            } catch (err) {
+                console.error("[Firebase] Erro ao salvar pagamento:", err);
+                alert("Aviso: Falha ao salvar no banco em nuvem. Salvo apenas localmente.");
+            }
 
             const pagamentosLocais = db.pagamentos.getAll();
             pagamentosLocais.push(pagamentoFinal);
