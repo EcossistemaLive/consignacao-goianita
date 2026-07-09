@@ -698,8 +698,23 @@ h1, h2, h3, h4, h5, h6 {
     pointer-events: auto;
 }
 
-/* Responsividade Mobile */
+/* Em telas médias (notebooks, janelas menores ou com zoom/escala do Windows), a
+   barra lateral permanece FIXA ao lado do conteúdo (não vira gaveta sobreposta).
+   Apenas empilhamos os grids de formulário/detalhe para o conteúdo não ficar espremido. */
 @media (max-width: 1024px) {
+    .form-grid {
+        grid-template-columns: 1fr;
+    }
+    .form-group.full-width {
+        grid-column: span 1;
+    }
+    .detail-layout {
+        grid-template-columns: 1fr;
+    }
+}
+
+/* Responsividade Mobile (celular/tablet): barra lateral vira gaveta */
+@media (max-width: 768px) {
     #mobile-header {
         display: flex;
     }
