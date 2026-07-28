@@ -868,7 +868,7 @@ function renderProdutoDetalhe() {
     document.getElementById('prod-detalhe-desc').textContent = produto.descricao || 'Sem descrição';
     document.getElementById('prod-detalhe-cliente').innerHTML = `<a href="cliente-detalhe.html?id=${encodeURIComponent(cliente.id)}">${esc(cliente.nome)}</a>`;
     document.getElementById('prod-detalhe-conservacao').textContent = produto.conservacao;
-    document.getElementById('prod-detalhe-dimensoes').textContent = `${produto.altura}x${produto.largura}x${produto.comprimento} cm | ${produto.peso} kg`;
+    document.getElementById('prod-detalhe-dimensoes').textContent = `${produto.altura}x${produto.largura}x${produto.comprimento} cm | ${produto.peso} g`;
     document.getElementById('prod-detalhe-preco-venda').textContent = formatCurrency(produto.precoVenda);
     document.getElementById('prod-detalhe-valor-cliente').textContent = formatCurrency(valorCliente);
     document.getElementById('prod-detalhe-comissao').textContent = `${produto.comissao}%`;
