@@ -450,24 +450,37 @@ function renderClienteDetalhe() {
     if (btnAlterarSenha && !btnAlterarSenha.dataset.handlerBound) {
         btnAlterarSenha.dataset.handlerBound = '1';
         btnAlterarSenha.addEventListener('click', async () => {
-            if (role === 'admin') {
+             if (role === 'admin') {
                 const novaSenha = prompt(`Digite a nova senha para o fornecedor ${cliente.nome} (mínimo 6 caracteres):`);
                 if (!novaSenha || novaSenha.length < 6) {
                     if (novaSenha !== null) alert("A senha deve ter pelo menos 6 caracteres.");
                     return;
                 }
                 const emailFake = cliente.cpf.replace(/\D/g, '') + '@goianita.com.br';
+                btnAlterarSenha.disabled = true;
+                btnAlterarSenha.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Aguarde...';
                 try {
-                    const tempApp = firebase.initializeApp(firebaseConfig, "TempApp" + Date.now());
-                    await tempApp.auth().createUserWithEmailAndPassword(emailFake, novaSenha);
-                    await tempApp.auth().signOut();
-                    alert("✅ Senha nova gravada com sucesso!");
-                } catch(err) {
-                    if (err.code === 'auth/email-already-in-use') {
-                        alert("⚠️ CONTA JÁ EXISTE!\n\nPara redefinir a senha como Admin, você precisa primeiro apagar o acesso antigo deste CPF na aba 'Authentication' do Firebase Console.\n\nApós apagar lá, clique neste botão novamente.");
+                    const scriptUrl = 'https://script.google.com/macros/s/AKfycbxW_uF5LTTRp-bvw8Tt8z6Y2QKcXA1S-qrsNQGJTc3e0xMyI7Esrglow8oYEfzmR5cI/exec';
+                    const response = await fetch(scriptUrl, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                        body: JSON.stringify({ action: 'resetPassword', email: emailFake, password: novaSenha })
+                    });
+                    const result = await response.json();
+                    if (result.success) {
+                        alert(`✅ Senha de ${cliente.nome} alterada com sucesso!`);
                     } else {
-                        alert("Erro ao alterar senha: " + err.message);
+                        if (result.error && result.error.includes('Service account')) {
+                            alert('⚠️ Configuração pendente: a chave de serviço do Firebase ainda não foi adicionada ao Apps Script.\n\nFale com o responsável técnico para completar a configuração.');
+                        } else {
+                            alert('Erro ao alterar senha: ' + (result.error || 'Erro desconhecido'));
+                        }
                     }
+                } catch(err) {
+                    alert('Erro de conexão com o servidor: ' + err.message);
+                } finally {
+                    btnAlterarSenha.disabled = false;
+                    btnAlterarSenha.innerHTML = '<i class="fa-solid fa-key"></i> Alterar Senha';
                 }
             } else if (role === 'cliente') {
                 const novaSenha = prompt(`Digite sua nova senha (mínimo 6 caracteres):`);
