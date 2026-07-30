@@ -460,7 +460,7 @@ function renderClienteDetalhe() {
                 btnAlterarSenha.disabled = true;
                 btnAlterarSenha.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Aguarde...';
                 try {
-                    const scriptUrl = 'https://script.google.com/macros/s/AKfycbxW_uF5LTTRp-bvw8Tt8z6Y2QKcXA1S-qrsNQGJTc3e0xMyI7Esrglow8oYEfzmR5cI/exec';
+                    const scriptUrl = 'https://script.google.com/macros/s/AKfycbx_BTHUo0wH8xk9_ngfUfpwdn3HE7v2dxUV2n3S6IoX_ijbr8pxSTqq339ni5kYBT1m/exec';
                     const response = await fetch(scriptUrl, {
                         method: 'POST',
                         headers: { 'Content-Type': 'text/plain;charset=utf-8' },
