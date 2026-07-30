@@ -469,12 +469,24 @@ function renderClienteDetalhe() {
                     const result = await response.json();
                     if (result.success) {
                         alert(`✅ Senha de ${cliente.nome} alterada com sucesso!`);
-                    } else {
-                        if (result.error && result.error.includes('Service account')) {
-                            alert('⚠️ Configuração pendente: a chave de serviço do Firebase ainda não foi adicionada ao Apps Script.\n\nFale com o responsável técnico para completar a configuração.');
-                        } else {
-                            alert('Erro ao alterar senha: ' + (result.error || 'Erro desconhecido'));
+                    } else if (result.error && /encontrad/i.test(result.error)) {
+                        // Fornecedor ainda não tem conta de acesso no Firebase: cria agora
+                        // com a senha definida (usa app "Secondary" para não deslogar o admin).
+                        try {
+                            const secApp = (firebase.apps || []).find(a => a.name === 'Secondary')
+                                || firebase.initializeApp(firebase.app().options, 'Secondary');
+                            await secApp.auth().createUserWithEmailAndPassword(emailFake, novaSenha);
+                            await secApp.auth().signOut();
+                            alert(`✅ Conta de acesso criada e senha definida para ${cliente.nome}!`);
+                        } catch (e2) {
+                            if (e2 && e2.code === 'auth/email-already-in-use') {
+                                alert('A conta já existe, mas o servidor não conseguiu redefinir agora. Tente novamente em instantes.');
+                            } else {
+                                alert('Erro ao criar a conta de acesso: ' + (e2.message || e2));
+                            }
                         }
+                    } else {
+                        alert('Erro ao alterar senha: ' + (result.error || 'Erro desconhecido'));
                     }
                 } catch(err) {
                     alert('Erro de conexão com o servidor: ' + err.message);
