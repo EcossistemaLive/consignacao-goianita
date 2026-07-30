@@ -444,6 +444,54 @@ function renderClienteDetalhe() {
         });
     }
     
+    const btnAlterarSenha = document.getElementById('btn-alterar-senha');
+    if (btnAlterarSenha && !btnAlterarSenha.dataset.handlerBound) {
+        btnAlterarSenha.dataset.handlerBound = '1';
+        btnAlterarSenha.addEventListener('click', async () => {
+            if (role === 'admin') {
+                const novaSenha = prompt(`Digite a nova senha para o fornecedor ${cliente.nome} (mínimo 6 caracteres):`);
+                if (!novaSenha || novaSenha.length < 6) {
+                    if (novaSenha !== null) alert("A senha deve ter pelo menos 6 caracteres.");
+                    return;
+                }
+                const emailFake = cliente.cpf.replace(/\D/g, '') + '@goianita.com.br';
+                try {
+                    const tempApp = firebase.initializeApp(firebaseConfig, "TempApp" + Date.now());
+                    await tempApp.auth().createUserWithEmailAndPassword(emailFake, novaSenha);
+                    await tempApp.auth().signOut();
+                    alert("✅ Senha nova gravada com sucesso!");
+                } catch(err) {
+                    if (err.code === 'auth/email-already-in-use') {
+                        alert("⚠️ CONTA JÁ EXISTE!\n\nPara redefinir a senha como Admin, você precisa primeiro apagar o acesso antigo deste CPF na aba 'Authentication' do Firebase Console.\n\nApós apagar lá, clique neste botão novamente.");
+                    } else {
+                        alert("Erro ao alterar senha: " + err.message);
+                    }
+                }
+            } else if (role === 'cliente') {
+                const novaSenha = prompt(`Digite sua nova senha (mínimo 6 caracteres):`);
+                if (!novaSenha || novaSenha.length < 6) {
+                    if (novaSenha !== null) alert("A senha deve ter pelo menos 6 caracteres.");
+                    return;
+                }
+                try {
+                    const user = window.GoianitaAuth.currentUser;
+                    if (user) {
+                        await user.updatePassword(novaSenha);
+                        alert("✅ Senha alterada com sucesso!");
+                    } else {
+                        alert("Erro: Usuário não autenticado.");
+                    }
+                } catch (err) {
+                    if (err.code === 'auth/requires-recent-login') {
+                        alert("Por questões de segurança, você precisa fazer login novamente antes de alterar a senha. Faça logout e entre novamente.");
+                    } else {
+                        alert("Erro ao alterar senha: " + err.message);
+                    }
+                }
+            }
+        });
+    }
+    
     // Listar produtos do cliente
     const prodTable = document.getElementById('cli-produtos-table');
     if (prodTable) {
