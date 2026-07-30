@@ -245,6 +245,8 @@ function renderClientesList() {
     const clientes = window.GoianitaDB.clientes.getAll();
     
     function drawTable(list) {
+        // Ordena por nome para garantir estabilidade do HTML (evita piscar o boto)
+        list.sort((a, b) => (a.nome || '').localeCompare(b.nome || ''));
         renderTabela(tableBody, list.map(c => {
             const financeiro = window.GoianitaDB.utils.calcularValoresCliente(c.id);
             return `
@@ -554,6 +556,8 @@ function renderProdutosList() {
     const produtos = window.GoianitaDB.produtos.getAll();
     
     function drawTable(list) {
+        // Ordena por SKU ou ID para garantir estabilidade do HTML (evita piscar o hover)
+        list.sort((a, b) => (a.sku || a.id).localeCompare(b.sku || b.id));
         renderTabela(tableBody, list.map(p => {
             const cliente = window.GoianitaDB.clientes.getById(p.clienteId) || { nome: 'Desconhecido' };
             const valorCliente = p.precoVenda - (p.precoVenda * p.comissao / 100);
@@ -1025,7 +1029,7 @@ function renderProdutoDetalhe() {
                     // Tenta extrair ID do Google Drive de vários formatos para gerar a miniatura
                     const driveMatch = m.url.match(/id=([a-zA-Z0-9-_]+)/) || m.url.match(/\/d\/([a-zA-Z0-9-_]+)/);
                     if (driveMatch && driveMatch[1]) {
-                        thumbUrl = `https://drive.google.com/thumbnail?id=${driveMatch[1]}&sz=w800`;
+                        thumbUrl = `https://lh3.googleusercontent.com/d/${driveMatch[1]}`;
                     }
                     el.innerHTML = `<img src="${thumbUrl}" style="width: 100%; height: 100%; object-fit: cover; cursor: pointer;" onclick="window.open('${m.url}', '_blank')">`;
                 }
@@ -1107,11 +1111,11 @@ function renderProdutoDetalhe() {
                     
                     if (responseData.success) {
                         // Converter URL do visualizador do Drive para URL de imagem direta
-                        // Exemplo: https://drive.google.com/file/d/12345/view -> https://drive.google.com/uc?export=view&id=12345
+                        // Exemplo: https://drive.google.com/file/d/12345/view -> lh3
                         let directUrl = responseData.url;
-                        const match = directUrl.match(/\/d\/([a-zA-Z0-9-_]+)/);
+                        const match = directUrl.match(/\/d\/([a-zA-Z0-9-_]+)/) || directUrl.match(/id=([a-zA-Z0-9-_]+)/);
                         if (match && match[1]) {
-                            directUrl = `https://drive.google.com/uc?export=view&id=${match[1]}`;
+                            directUrl = `https://lh3.googleusercontent.com/d/${match[1]}`;
                         }
 
                         produto.midias.push({
