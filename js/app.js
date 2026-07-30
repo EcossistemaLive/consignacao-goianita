@@ -1026,10 +1026,11 @@ function renderProdutoDetalhe() {
                     el.innerHTML = `<video src="${m.url}" style="width: 100%; height: 100%; object-fit: cover; background: #000;" controls></video>`;
                 } else {
                     let thumbUrl = m.url;
-                    // Tenta extrair ID do Google Drive de vários formatos para gerar a miniatura
+                    // Extrai o ID do Google Drive de qualquer formato de URL salva
                     const driveMatch = m.url.match(/id=([a-zA-Z0-9-_]+)/) || m.url.match(/\/d\/([a-zA-Z0-9-_]+)/);
                     if (driveMatch && driveMatch[1]) {
-                        thumbUrl = `https://lh3.googleusercontent.com/d/${driveMatch[1]}`;
+                        // /thumbnail funciona para arquivos públicos do Drive (ANYONE_WITH_LINK)
+                        thumbUrl = `https://drive.google.com/thumbnail?id=${driveMatch[1]}&sz=w400`;
                     }
                     el.innerHTML = `<img src="${thumbUrl}" style="width: 100%; height: 100%; object-fit: cover; cursor: pointer;" onclick="window.open('${m.url}', '_blank')">`;
                 }
@@ -1110,12 +1111,17 @@ function renderProdutoDetalhe() {
                     const responseData = await response.json();
                     
                     if (responseData.success) {
-                        // Converter URL do visualizador do Drive para URL de imagem direta
-                        // Exemplo: https://drive.google.com/file/d/12345/view -> lh3
-                        let directUrl = responseData.url;
-                        const match = directUrl.match(/\/d\/([a-zA-Z0-9-_]+)/) || directUrl.match(/id=([a-zA-Z0-9-_]+)/);
-                        if (match && match[1]) {
-                            directUrl = `https://lh3.googleusercontent.com/d/${match[1]}`;
+                        // Usa o fileId retornado pelo script para montar URL confiável
+                        // Evita depender de regex sobre URLs que podem mudar de formato
+                        let directUrl;
+                        if (responseData.fileId) {
+                            directUrl = `https://drive.google.com/uc?export=view&id=${responseData.fileId}`;
+                        } else {
+                            // Fallback: extrai ID da URL retornada
+                            const match = responseData.url.match(/\/d\/([a-zA-Z0-9-_]+)/) || responseData.url.match(/id=([a-zA-Z0-9-_]+)/);
+                            directUrl = (match && match[1])
+                                ? `https://drive.google.com/uc?export=view&id=${match[1]}`
+                                : responseData.url;
                         }
 
                         produto.midias.push({
