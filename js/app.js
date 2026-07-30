@@ -482,7 +482,7 @@ function renderClienteDetalhe() {
                     btnAlterarSenha.disabled = false;
                     btnAlterarSenha.innerHTML = '<i class="fa-solid fa-key"></i> Alterar Senha';
                 }
-            } else if (role === 'cliente') {
+            } else if (role === 'user') {
                 const novaSenha = prompt(`Digite sua nova senha (mínimo 6 caracteres):`);
                 if (!novaSenha || novaSenha.length < 6) {
                     if (novaSenha !== null) alert("A senha deve ter pelo menos 6 caracteres.");
@@ -1038,14 +1038,40 @@ function renderProdutoDetalhe() {
                 if (m.type && m.type.startsWith('video/')) {
                     el.innerHTML = `<video src="${m.url}" style="width: 100%; height: 100%; object-fit: cover; background: #000;" controls></video>`;
                 } else {
-                    let thumbUrl = m.url;
-                    // Extrai o ID do Google Drive de qualquer formato de URL salva
+                    const img = document.createElement('img');
+                    img.referrerPolicy = 'no-referrer'; // ajuda o Google a servir a imagem em <img>
+                    img.loading = 'lazy';
+                    img.style.cssText = 'width: 100%; height: 100%; object-fit: cover; cursor: pointer;';
+                    img.title = 'Abrir imagem';
+                    img.onclick = () => window.open(m.url, '_blank');
+
                     const driveMatch = m.url.match(/id=([a-zA-Z0-9-_]+)/) || m.url.match(/\/d\/([a-zA-Z0-9-_]+)/);
                     if (driveMatch && driveMatch[1]) {
-                        // /thumbnail funciona para arquivos públicos do Drive (ANYONE_WITH_LINK)
-                        thumbUrl = `https://drive.google.com/thumbnail?id=${driveMatch[1]}&sz=w400`;
+                        // Tenta vários endpoints do Drive em cascata (funcionam quando o arquivo
+                        // está compartilhado como "qualquer pessoa com o link" / público).
+                        const fid = driveMatch[1];
+                        const fontes = [
+                            `https://drive.google.com/thumbnail?id=${fid}&sz=w1000`,
+                            `https://lh3.googleusercontent.com/d/${fid}=w1000`,
+                            `https://drive.google.com/uc?export=view&id=${fid}`
+                        ];
+                        let fi = 0;
+                        img.src = fontes[0];
+                        img.onerror = () => {
+                            fi++;
+                            if (fi < fontes.length) { img.src = fontes[fi]; }
+                            else {
+                                img.onerror = null;
+                                const aviso = document.createElement('div');
+                                aviso.style.cssText = 'width:100%;height:100%;display:flex;align-items:center;justify-content:center;font-size:10px;color:#999;text-align:center;padding:4px;background:#f3f3f3;';
+                                aviso.textContent = 'Imagem não pública no Drive';
+                                img.replaceWith(aviso);
+                            }
+                        };
+                    } else {
+                        img.src = m.url;
                     }
-                    el.innerHTML = `<img src="${thumbUrl}" style="width: 100%; height: 100%; object-fit: cover; cursor: pointer;" onclick="window.open('${m.url}', '_blank')">`;
+                    el.appendChild(img);
                 }
                 
                 const btnApagar = document.createElement('button');
