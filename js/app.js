@@ -460,7 +460,7 @@ function renderClienteDetalhe() {
                 btnAlterarSenha.disabled = true;
                 btnAlterarSenha.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Aguarde...';
                 try {
-                    const scriptUrl = 'https://script.google.com/macros/s/AKfycbx_BTHUo0wH8xk9_ngfUfpwdn3HE7v2dxUV2n3S6IoX_ijbr8pxSTqq339ni5kYBT1m/exec';
+                    const scriptUrl = 'https://script.google.com/macros/s/AKfycbxBeNmXFp0QebXe-oBPu1tCMVatOtDfpwb8VjggdvsQN-qnfFP45fb3fkC7_Q1tXNVs/exec';
                     const response = await fetch(scriptUrl, {
                         method: 'POST',
                         headers: { 'Content-Type': 'text/plain;charset=utf-8' },
@@ -1115,7 +1115,7 @@ function renderProdutoDetalhe() {
             produto.midias = produto.midias || [];
 
             try {
-                const webAppUrl = "https://script.google.com/macros/s/AKfycbwnQYnax3uFAnnEq77PSEOLWAWvhCfnyA5BDuKsCTwCRwFN2AAKHpv6cDETmLVSvF_v/exec";
+                const webAppUrl = "https://script.google.com/macros/s/AKfycbxBeNmXFp0QebXe-oBPu1tCMVatOtDfpwb8VjggdvsQN-qnfFP45fb3fkC7_Q1tXNVs/exec";
 
                 for (let i = 0; i < files.length; i++) {
                     const file = files[i];
