@@ -450,71 +450,30 @@ function renderClienteDetalhe() {
     if (btnAlterarSenha && !btnAlterarSenha.dataset.handlerBound) {
         btnAlterarSenha.dataset.handlerBound = '1';
         btnAlterarSenha.addEventListener('click', async () => {
-             if (role === 'admin') {
-                const novaSenha = prompt(`Digite a nova senha para o fornecedor ${cliente.nome} (mínimo 6 caracteres):`);
-                if (!novaSenha || novaSenha.length < 6) {
-                    if (novaSenha !== null) alert("A senha deve ter pelo menos 6 caracteres.");
-                    return;
-                }
-                const emailFake = cliente.cpf.replace(/\D/g, '') + '@goianita.com.br';
-                btnAlterarSenha.disabled = true;
-                btnAlterarSenha.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Aguarde...';
-                try {
-                    const scriptUrl = 'https://script.google.com/macros/s/AKfycbxBeNmXFp0QebXe-oBPu1tCMVatOtDfpwb8VjggdvsQN-qnfFP45fb3fkC7_Q1tXNVs/exec';
-                    const response = await fetch(scriptUrl, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-                        body: JSON.stringify({ action: 'resetPassword', email: emailFake, password: novaSenha })
-                    });
-                    const result = await response.json();
-                    if (result.success) {
-                        alert(`✅ Senha de ${cliente.nome} alterada com sucesso!`);
-                    } else if (result.error && /encontrad/i.test(result.error)) {
-                        // Fornecedor ainda não tem conta de acesso no Firebase: cria agora
-                        // com a senha definida (usa app "Secondary" para não deslogar o admin).
-                        try {
-                            const secApp = (firebase.apps || []).find(a => a.name === 'Secondary')
-                                || firebase.initializeApp(firebase.app().options, 'Secondary');
-                            await secApp.auth().createUserWithEmailAndPassword(emailFake, novaSenha);
-                            await secApp.auth().signOut();
-                            alert(`✅ Conta de acesso criada e senha definida para ${cliente.nome}!`);
-                        } catch (e2) {
-                            if (e2 && e2.code === 'auth/email-already-in-use') {
-                                alert('A conta já existe, mas o servidor não conseguiu redefinir agora. Tente novamente em instantes.');
-                            } else {
-                                alert('Erro ao criar a conta de acesso: ' + (e2.message || e2));
-                            }
-                        }
-                    } else {
-                        alert('Erro ao alterar senha: ' + (result.error || 'Erro desconhecido'));
-                    }
-                } catch(err) {
-                    alert('Erro de conexão com o servidor: ' + err.message);
-                } finally {
-                    btnAlterarSenha.disabled = false;
-                    btnAlterarSenha.innerHTML = '<i class="fa-solid fa-key"></i> Alterar Senha';
-                }
-            } else if (role === 'user') {
-                const novaSenha = prompt(`Digite sua nova senha (mínimo 6 caracteres):`);
-                if (!novaSenha || novaSenha.length < 6) {
-                    if (novaSenha !== null) alert("A senha deve ter pelo menos 6 caracteres.");
-                    return;
-                }
-                try {
-                    const user = window.GoianitaAuth.currentUser;
-                    if (user) {
-                        await user.updatePassword(novaSenha);
-                        alert("✅ Senha alterada com sucesso!");
-                    } else {
-                        alert("Erro: Usuário não autenticado.");
-                    }
-                } catch (err) {
-                    if (err.code === 'auth/requires-recent-login') {
-                        alert("Por questões de segurança, você precisa fazer login novamente antes de alterar a senha. Faça logout e entre novamente.");
-                    } else {
-                        alert("Erro ao alterar senha: " + err.message);
-                    }
-                }
+            const ehAdmin = role === 'admin';
+            const novaSenha = prompt(ehAdmin
+                ? `Digite a nova senha para o fornecedor ${cliente.nome} (mínimo 6 caracteres):`
+                : `Digite sua nova senha (mínimo 6 caracteres):`);
+            if (novaSenha === null) return;
+            if (novaSenha.length < 6) { alert('A senha deve ter pelo menos 6 caracteres.'); return; }
+
+            btnAlterarSenha.disabled = true;
+            const htmlOrig = btnAlterarSenha.innerHTML;
+            btnAlterarSenha.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Salvando...';
+            try {
+                // A senha é gravada como HASH no cadastro do fornecedor (db.clientes.save
+                // converte cliente.senha em senhaHash). Sem Firebase Auth, sem Apps Script.
+                const atual = window.GoianitaDB.clientes.getById(cliente.id) || cliente;
+                atual.senha = novaSenha;
+                await window.GoianitaDB.clientes.save(atual);
+                alert(ehAdmin
+                    ? `✅ Senha de ${cliente.nome} definida! Ele já entra com o CPF e essa senha.`
+                    : '✅ Sua senha foi alterada com sucesso!');
+            } catch (err) {
+                alert('Erro ao alterar senha: ' + (err.message || err));
+            } finally {
+                btnAlterarSenha.disabled = false;
+                btnAlterarSenha.innerHTML = htmlOrig;
             }
         });
     }

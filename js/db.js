@@ -66,6 +66,19 @@ function parseMoedaBR(valor) {
 window.parseMoedaBR = parseMoedaBR;
 
 /**
+ * Hash SHA-256 (hex) da senha do fornecedor, guardado no próprio cadastro.
+ * O login do fornecedor deixa de depender do Firebase Auth: o admin reseta e o
+ * cliente troca a senha direto no app (uma escrita no cadastro). Requer HTTPS
+ * (crypto.subtle) — o GitHub Pages já é HTTPS.
+ */
+async function goianitaHash(texto) {
+    const data = new TextEncoder().encode(String(texto == null ? '' : texto));
+    const buf = await crypto.subtle.digest('SHA-256', data);
+    return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
+}
+window.goianitaHash = goianitaHash;
+
+/**
  * TOMBSTONES (marcas de exclusão)
  * Guardam os IDs de registros que foram apagados de propósito. A sincronização em
  * tempo real usa isso para NUNCA re-enviar/re-exibir um item excluído — resolvendo o
@@ -340,6 +353,12 @@ const db = {
             // um fornecedor que havia sido excluído).
             removeTombstone('clientes', cliente.id || idNovo);
 
+            // Senha do fornecedor vira HASH guardado no cadastro (não usa mais Firebase Auth).
+            if (cliente.senha) {
+                cliente.senhaHash = await goianitaHash(cliente.senha);
+                delete cliente.senha;
+            }
+
             if (typeof firebase === 'undefined' || !window.GoianitaFirestore) {
                 const clientes = clientesAtuais;
                 if (cliente.id) {
@@ -370,26 +389,7 @@ const db = {
                 dataCadastro: dataCadastro
             };
 
-            // Criar login no Firebase Auth se for novo cliente e tiver senha
-            if (!cliente.id) {
-                try {
-                    const email = cliente.cpf.replace(/\D/g, '') + '@goianita.com.br';
-                    const senha = cliente.senha || 'goianita123';
-
-                    let secondaryApp;
-                    try {
-                        secondaryApp = firebase.app("Secondary");
-                    } catch (e) {
-                        secondaryApp = firebase.initializeApp(firebaseConfig, "Secondary");
-                    }
-
-                    await secondaryApp.auth().createUserWithEmailAndPassword(email, senha);
-                    await secondaryApp.auth().signOut();
-                    console.log(`[Firebase Auth] Usuário criado de forma silenciosa (sem deslogar o admin): ${email}`);
-                } catch (err) {
-                    console.warn("[Firebase Auth] Usuário pode já existir ou erro na criação:", err);
-                }
-            }
+            // (Fornecedor não usa mais Firebase Auth — a senha vai como hash no cadastro.)
 
             const cleanCliente = { ...clienteFinal };
             delete cleanCliente.senha;

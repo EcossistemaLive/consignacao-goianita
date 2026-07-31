@@ -245,56 +245,48 @@
 
             const emailCpf = cleanCpf + '@goianita.com.br';
 
-            if (typeof firebase === 'undefined' || !window.GoianitaAuth) {
-                const clientes = window.GoianitaDB.clientes.getAll();
-                const cli = clientes.find(c => c.cpf.replace(/\D/g, '') === cleanCpf);
-                if (cli) {
+            // Login do fornecedor por HASH de senha (guardado no cadastro) — não usa mais
+            // Firebase Auth. Para puxar os dados em outro aparelho, tentamos um login
+            // anônimo no Firebase (se estiver habilitado); se não, usa o que já está local.
+            btn.disabled = true;
+            btn.textContent = 'Entrando...';
+            (async () => {
+                try {
+                    try {
+                        if (window.GoianitaAuth && !window.GoianitaAuth.currentUser) {
+                            await window.GoianitaAuth.signInAnonymously();
+                        }
+                    } catch (_) { /* anônimo não habilitado: segue com dados locais */ }
+
+                    let cli = null;
+                    for (let t = 0; t < 8 && !cli; t++) {
+                        cli = window.GoianitaDB.clientes.getAll().find(c => c.cpf && c.cpf.replace(/\D/g, '') === cleanCpf);
+                        if (!cli) await new Promise(r => setTimeout(r, 350));
+                    }
+                    if (!cli) {
+                        alert('CPF não cadastrado (ou os dados ainda não sincronizaram — tente novamente em instantes).');
+                        btn.disabled = false; btn.textContent = 'Entrar no Sistema';
+                        return;
+                    }
+
+                    const hashInformado = await window.goianitaHash(pass);
+                    const hashEsperado = cli.senhaHash || await window.goianitaHash('goianita123');
+                    if (hashInformado !== hashEsperado) {
+                        alert('CPF ou senha incorretos.');
+                        btn.disabled = false; btn.textContent = 'Entrar no Sistema';
+                        return;
+                    }
+
                     sessionStorage.setItem('goianita_role', 'user');
                     sessionStorage.setItem('goianita_cliente_id', cli.id);
+                    sessionStorage.setItem('goianita_user_name', cli.nome || '');
+                    sessionStorage.setItem('goianita_email', emailCpf);
                     window.location.href = 'pages/cliente-detalhe.html?id=' + cli.id;
-                } else {
-                    alert('CPF não cadastrado.');
+                } catch (err) {
+                    alert('Erro ao entrar: ' + (err.message || err));
+                    btn.disabled = false; btn.textContent = 'Entrar no Sistema';
                 }
-                return;
-            }
-
-            btn.disabled = true;
-            btn.textContent = 'Autenticando...';
-
-            window.GoianitaAuth.signInWithEmailAndPassword(emailCpf, pass)
-                .then(userCredential => {
-                    const clientes = window.GoianitaDB.clientes.getAll();
-                    const cli = clientes.find(c => c.cpf.replace(/\D/g, '') === cleanCpf);
-                    if (cli) {
-                        sessionStorage.setItem('goianita_role', 'user');
-                        sessionStorage.setItem('goianita_cliente_id', cli.id);
-                        sessionStorage.setItem('goianita_user_name', cli.nome);
-                        sessionStorage.setItem('goianita_email', emailCpf);
-                        window.location.href = 'pages/cliente-detalhe.html?id=' + cli.id;
-                    } else {
-                        const basicCli = {
-                            nome: userCredential.user.displayName || 'Fornecedor',
-                            cpf: user,
-                            telefone: '',
-                            email: userCredential.user.email,
-                            chavePixType: 'CPF',
-                            chavePix: user,
-                            comissaoPadrao: 50
-                        };
-                        window.GoianitaDB.clientes.save(basicCli).then(saved => {
-                            sessionStorage.setItem('goianita_role', 'user');
-                            sessionStorage.setItem('goianita_cliente_id', saved.id);
-                            sessionStorage.setItem('goianita_user_name', saved.nome);
-                            sessionStorage.setItem('goianita_email', emailCpf);
-                            window.location.href = 'pages/cliente-detalhe.html?id=' + saved.id;
-                        });
-                    }
-                })
-                .catch(() => {
-                    alert('CPF ou senha incorretos.');
-                    btn.disabled = false;
-                    btn.textContent = 'Entrar no Sistema';
-                });
+            })();
         });
 
         // ─────────────────────────────────────────────
