@@ -886,6 +886,35 @@ function renderProdutoNovo() {
     });
 }
 
+// Comprime uma imagem no navegador (redimensiona + JPEG) e devolve um data URL.
+// Mantém a foto pequena para ser guardada junto do produto, sem depender do Drive.
+function comprimirImagem(file, maxDim, quality) {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onerror = () => reject(new Error('Falha ao ler a imagem'));
+        reader.onload = () => {
+            const img = new Image();
+            img.onerror = () => reject(new Error('Arquivo de imagem inválido'));
+            img.onload = () => {
+                let width = img.width, height = img.height;
+                if (width > maxDim || height > maxDim) {
+                    if (width >= height) { height = Math.round(height * maxDim / width); width = maxDim; }
+                    else { width = Math.round(width * maxDim / height); height = maxDim; }
+                }
+                const canvas = document.createElement('canvas');
+                canvas.width = width; canvas.height = height;
+                const ctx = canvas.getContext('2d');
+                ctx.fillStyle = '#ffffff';
+                ctx.fillRect(0, 0, width, height);
+                ctx.drawImage(img, 0, 0, width, height);
+                resolve(canvas.toDataURL('image/jpeg', quality));
+            };
+            img.src = reader.result;
+        };
+        reader.readAsDataURL(file);
+    });
+}
+
 // --- DETALHE E FLUXO DE STATUS DO PRODUTO ---
 function renderProdutoDetalhe() {
     const urlParams = new URLSearchParams(window.location.search);
@@ -1016,11 +1045,11 @@ function renderProdutoDetalhe() {
                     img.title = 'Abrir imagem';
                     img.onclick = () => window.open(m.url, '_blank');
 
-                    const driveMatch = m.url.match(/id=([a-zA-Z0-9-_]+)/) || m.url.match(/\/d\/([a-zA-Z0-9-_]+)/);
-                    if (driveMatch && driveMatch[1]) {
+                    const driveMatch = (m.url && !m.url.startsWith('data:')) ? (m.url.match(/id=([a-zA-Z0-9-_]+)/) || m.url.match(/\/d\/([a-zA-Z0-9-_]+)/)) : null;
+                    const fid = m.fileId || (driveMatch && driveMatch[1]) || null;
+                    if (fid) {
                         // Tenta vários endpoints do Drive em cascata (funcionam quando o arquivo
                         // está compartilhado como "qualquer pessoa com o link" / público).
-                        const fid = driveMatch[1];
                         const fontes = [
                             `https://drive.google.com/thumbnail?id=${fid}&sz=w1000`,
                             `https://lh3.googleusercontent.com/d/${fid}=w1000`,
@@ -1072,83 +1101,65 @@ function renderProdutoDetalhe() {
     if (uploadInput && !uploadInput.dataset.handlerBound) {
         uploadInput.dataset.handlerBound = '1';
         uploadInput.addEventListener('change', async (e) => {
-            const files = e.target.files;
-            if (!files || files.length === 0) return;
-            
-            if (typeof firebase === 'undefined' || !window.GoianitaStorage) {
-                alert('Firebase Storage não inicializado ou sem internet.');
-                return;
-            }
-            
+            const files = Array.from(e.target.files || []);
+            if (files.length === 0) return;
+
             const statusLabel = document.getElementById('upload-status');
-            statusLabel.textContent = `Enviando ${files.length} arquivo(s)... (pode demorar)`;
             uploadInput.disabled = true;
             produto.midias = produto.midias || [];
 
-            try {
-                const webAppUrl = "https://script.google.com/macros/s/AKfycbxBeNmXFp0QebXe-oBPu1tCMVatOtDfpwb8VjggdvsQN-qnfFP45fb3fkC7_Q1tXNVs/exec";
+            const webAppUrl = "https://script.google.com/macros/s/AKfycbxBeNmXFp0QebXe-oBPu1tCMVatOtDfpwb8VjggdvsQN-qnfFP45fb3fkC7_Q1tXNVs/exec";
 
+            try {
                 for (let i = 0; i < files.length; i++) {
                     const file = files[i];
-                    statusLabel.textContent = `Processando arquivo ${i + 1} de ${files.length}... (pode demorar)`;
-                    
-                    // 1. Ler como Base64
-                    const base64Url = await new Promise((resolve, reject) => {
-                        const reader = new FileReader();
-                        reader.onload = () => resolve(reader.result);
-                        reader.onerror = () => reject(new Error("Falha ao ler o arquivo"));
-                        reader.readAsDataURL(file);
-                    });
-                    
-                    const fileName = `${Date.now()}_${file.name}`;
-                    
-                    statusLabel.textContent = `Enviando arquivo ${i + 1} de ${files.length} para a pasta de ${cliente.nome}...`;
-                    
-                    // 2. Enviar para o Google Apps Script usando 'text/plain' para evitar o bloqueio de preflight CORS (OPTIONS)
+                    statusLabel.textContent = `Enviando ${i + 1} de ${files.length} para o Drive...`;
+
+                    // Imagens são comprimidas antes de subir (menor e mais rápido); demais tipos vão como estão.
+                    let base64Url;
+                    if (file.type && file.type.startsWith('image/')) {
+                        base64Url = await comprimirImagem(file, 1400, 0.7);
+                    } else {
+                        base64Url = await new Promise((resolve, reject) => {
+                            const reader = new FileReader();
+                            reader.onload = () => resolve(reader.result);
+                            reader.onerror = () => reject(new Error('Falha ao ler o arquivo'));
+                            reader.readAsDataURL(file);
+                        });
+                    }
+
+                    const mimeType = (file.type && file.type.startsWith('image/')) ? 'image/jpeg' : (file.type || 'application/octet-stream');
+                    const fileName = `${Date.now()}_${(file.name || 'arquivo').replace(/\.[^.]+$/, '')}.jpg`;
+
                     const response = await fetch(webAppUrl, {
                         method: 'POST',
-                        headers: {
-                            'Content-Type': 'text/plain;charset=utf-8',
-                        },
+                        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
                         body: JSON.stringify({
                             fornecedor: cliente.nome,
-                            fileName: fileName,
-                            mimeType: file.type || 'application/octet-stream',
+                            fileName: (file.type && file.type.startsWith('image/')) ? fileName : `${Date.now()}_${file.name}`,
+                            mimeType: mimeType,
                             base64Data: base64Url
                         })
                     });
-
                     const responseData = await response.json();
-                    
-                    if (responseData.success) {
-                        // Usa o fileId retornado pelo script para montar URL confiável
-                        // Evita depender de regex sobre URLs que podem mudar de formato
-                        let directUrl;
-                        if (responseData.fileId) {
-                            directUrl = `https://drive.google.com/uc?export=view&id=${responseData.fileId}`;
-                        } else {
-                            // Fallback: extrai ID da URL retornada
-                            const match = responseData.url.match(/\/d\/([a-zA-Z0-9-_]+)/) || responseData.url.match(/id=([a-zA-Z0-9-_]+)/);
-                            directUrl = (match && match[1])
-                                ? `https://drive.google.com/uc?export=view&id=${match[1]}`
-                                : responseData.url;
-                        }
 
-                        produto.midias.push({
-                            url: directUrl,
-                            type: file.type
-                        });
-                    } else {
-                        throw new Error(responseData.error || "Erro desconhecido no Google Drive");
+                    if (!responseData.success) {
+                        throw new Error(responseData.error || 'Erro desconhecido no Google Drive');
                     }
+                    // Guarda o fileId (fonte confiável) além da url; a exibição monta o link do Drive.
+                    produto.midias.push({
+                        url: responseData.url || (responseData.fileId ? ('https://drive.google.com/uc?export=view&id=' + responseData.fileId) : ''),
+                        fileId: responseData.fileId || null,
+                        type: mimeType
+                    });
                 }
-                
-                statusLabel.textContent = 'Gravando no banco de dados...';
+
+                statusLabel.textContent = 'Salvando...';
                 await window.GoianitaDB.produtos.save(produto);
-                statusLabel.textContent = 'Mídias salvas com sucesso no Google Drive!';
-                setTimeout(() => window.location.reload(), 1500);
+                statusLabel.textContent = 'Fotos salvas no Drive!';
+                setTimeout(() => window.location.reload(), 800);
             } catch (err) {
-                statusLabel.textContent = 'Erro de envio: ' + err.message;
+                statusLabel.textContent = 'Erro de envio: ' + (err.message || err);
                 uploadInput.disabled = false;
             }
         });
