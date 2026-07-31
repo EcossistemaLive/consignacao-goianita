@@ -1466,76 +1466,105 @@ function fmtMoedaDoc(v) {
     return n.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
-async function gerarDocx(templatePath, data, nomeArquivo) {
-    const Docx = window.docxtemplater || window.Docxtemplater;
-    if (typeof PizZip === 'undefined' || !Docx || typeof saveAs === 'undefined') {
-        alert('As bibliotecas de geração de documento não carregaram. Verifique a conexão com a internet e recarregue a página (Ctrl+Shift+R).');
-        return;
-    }
-    try {
-        const resp = await fetch(templatePath);
-        if (!resp.ok) throw new Error('modelo não encontrado (' + resp.status + ')');
-        const buf = await resp.arrayBuffer();
-        const zip = new PizZip(buf);
-        const doc = new Docx(zip, { paragraphLoop: true, linebreaks: true });
-        doc.render(data);
-        const blob = doc.getZip().generate({
-            type: 'blob',
-            mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
-        });
-        saveAs(blob, nomeArquivo);
-    } catch (err) {
-        console.error('[Docx] Erro ao gerar documento:', err);
-        alert('Não foi possível gerar o documento.\n\nSe a mensagem falar em "modelo não encontrado", confirme que a pasta "templates" (com os arquivos .docx) foi enviada ao repositório.\n\nDetalhe técnico: ' + (err.message || err));
-    }
-}
-
 function slugArquivo(nome) {
     return String(nome || 'fornecedor').normalize('NFD').replace(/[^\x00-\x7F]/g, '').replace(/[^a-zA-Z0-9]+/g, '_').replace(/^_+|_+$/g, '') || 'fornecedor';
 }
 
+// Gera o .docx inteiramente por código (biblioteca docx via CDN) — sem template externo,
+// sem pasta templates, sem placeholder. Os itens são SEMPRE os produtos reais do fornecedor.
+async function baixarDocx(doc, nomeArquivo) {
+    const D = window.docx;
+    if (!D || !D.Packer || typeof saveAs === 'undefined') {
+        alert('A biblioteca de geração de documento não carregou. Verifique a internet e recarregue a página (Ctrl+Shift+R).');
+        return;
+    }
+    const blob = await D.Packer.toBlob(doc);
+    saveAs(blob, nomeArquivo);
+}
+
 window.gerarNotaEntrada = async function() {
+    const D = window.docx;
+    if (!D) { alert('A biblioteca de documento não carregou. Recarregue a página (Ctrl+Shift+R).'); return; }
     const id = new URLSearchParams(window.location.search).get('id');
     const cliente = window.GoianitaDB.clientes.getById(id);
     if (!cliente) { alert('Fornecedor não encontrado.'); return; }
     const produtos = window.GoianitaDB.produtos.getByCliente(id);
-    if (produtos.length === 0 && !confirm('Este fornecedor não tem produtos cadastrados. Gerar a Nota de Entrada mesmo assim (sem itens)?')) return;
+    if (produtos.length === 0 && !confirm('Este fornecedor não tem produtos cadastrados. Gerar a Nota mesmo assim (sem itens)?')) return;
 
-    const itens = produtos.map((p, i) => ({
-        item: i + 1,
-        mercadoria: p.nome || '',
-        condicao: 'USADO',
-        embalagem: p.embalagem || '',
-        estado: p.conservacao || '',
-        prevVenda: p.prevVenda || '',
-        avaliacao: fmtMoedaDoc(p.precoSugerido != null && p.precoSugerido !== 0 ? p.precoSugerido : p.precoVenda),
-        valorVenda: fmtMoedaDoc(p.precoVenda)
-    }));
+    const { Document, Paragraph, TextRun, Table, TableRow, TableCell, WidthType, AlignmentType } = D;
+    const P = (children, opts) => new Paragraph(Object.assign({ children }, opts || {}));
+    const T = (text, opts) => new TextRun(Object.assign({ text: String(text == null ? '' : text) }, opts || {}));
+    const cel = (txt, o) => { o = o || {}; return new TableCell({ width: { size: o.w || 12, type: WidthType.PERCENTAGE }, children: [ new Paragraph({ alignment: o.align || AlignmentType.LEFT, children: [ new TextRun({ text: String(txt == null ? '' : txt), bold: !!o.bold, size: o.size || 16 }) ] }) ] }); };
 
-    await gerarDocx('../templates/nota-entrada.docx', {
-        numero: numeroNota(cliente),
-        fornecedor: cliente.nome || '',
-        cpf: cliente.cpf || '',
-        endereco: cliente.endereco || '',
-        telefone: cliente.telefone || '',
-        contato: cliente.contato || cliente.email || '',
-        observacoes: '',
-        itens: itens
-    }, 'Nota_Entrada_' + slugArquivo(cliente.nome) + '.docx');
+    const cols = ['Item', 'Mercadoria', 'Condição', 'Embalagem', 'Estado', 'Prev. Venda', 'Avaliação (R$)', 'Valor Venda (R$)'];
+    const rows = [ new TableRow({ tableHeader: true, children: cols.map(c => cel(c, { bold: true, align: AlignmentType.CENTER })) }) ];
+    produtos.forEach((p, i) => {
+        rows.push(new TableRow({ children: [
+            cel(i + 1, { align: AlignmentType.CENTER }),
+            cel(p.nome || ''),
+            cel('USADO'),
+            cel(p.embalagem || ''),
+            cel(p.conservacao || ''),
+            cel(p.prevVenda || ''),
+            cel(fmtMoedaDoc(p.precoSugerido != null && p.precoSugerido !== 0 ? p.precoSugerido : p.precoVenda), { align: AlignmentType.RIGHT }),
+            cel(fmtMoedaDoc(p.precoVenda), { align: AlignmentType.RIGHT })
+        ] }));
+    });
+
+    const contato = cliente.contato || cliente.email || '';
+    const doc = new Document({ sections: [{ children: [
+        P([ T('CASA GOIANITA', { bold: true, size: 28 }) ], { alignment: AlignmentType.CENTER }),
+        P([ T('NOTA DE ENTRADA DE MERCADORIAS SEMI-NOVAS P/ VENDA', { bold: true, size: 24 }) ], { alignment: AlignmentType.CENTER }),
+        P([ T('Documento de Recebimento e Avaliação de Consignação — Nº: ' + numeroNota(cliente), { italics: true, size: 18 }) ], { alignment: AlignmentType.CENTER }),
+        P([ T('') ]),
+        P([ T('Fornecedor: ', { bold: true }), T(cliente.nome || '') ]),
+        P([ T('CPF/CNPJ: ', { bold: true }), T(cliente.cpf || '') ]),
+        P([ T('Endereço: ', { bold: true }), T(cliente.endereco || '') ]),
+        P([ T('Telefone: ', { bold: true }), T(cliente.telefone || ''), T('     Contato: ', { bold: true }), T(contato) ]),
+        P([ T('Observações: ', { bold: true }), T('') ]),
+        P([ T('') ]),
+        new Table({ width: { size: 100, type: WidthType.PERCENTAGE }, rows: rows }),
+        P([ T('') ]),
+        P([ T('Prazo de Avaliação: 7 dias', { bold: true }) ]),
+        P([ T('') ]),
+        P([ T('RECIBO E TERMOS DE CONSIGNAÇÃO', { bold: true }) ]),
+        P([ T('Recebemos do cliente acima caracterizado as mercadorias relacionadas para revenda. O cliente terá o direito de aprovar/reprovar a avaliação. As despesas provenientes da venda correrão por conta da Casa Goianita, inclusive os impostos. O valor da parte do fornecedor será pago após recebimento de cartão ou prazo concedido aos adquirentes. A responsabilidade da venda é toda da Casa Goianita. Quando a venda for à vista, o pagamento será feito em até 3 dias via PIX ao fornecedor.', { size: 18 }) ]),
+        P([ T('') ]), P([ T('') ]),
+        P([ T('_________________________________________') ], { alignment: AlignmentType.CENTER }),
+        P([ T('Assinatura do Fornecedor / Proprietário') ], { alignment: AlignmentType.CENTER })
+    ] }] });
+
+    await baixarDocx(doc, 'Nota_Entrada_' + slugArquivo(cliente.nome) + '.docx');
 };
 
 window.gerarReciboDevolucao = async function() {
+    const D = window.docx;
+    if (!D) { alert('A biblioteca de documento não carregou. Recarregue a página (Ctrl+Shift+R).'); return; }
     const id = new URLSearchParams(window.location.search).get('id');
     const cliente = window.GoianitaDB.clientes.getById(id);
     if (!cliente) { alert('Fornecedor não encontrado.'); return; }
     const hoje = new Date();
-    await gerarDocx('../templates/recibo-devolucao.docx', {
-        numeroNota: numeroNota(cliente),
-        dia: String(hoje.getDate()).padStart(2, '0'),
-        mes: GOIANITA_MESES[hoje.getMonth()],
-        ano: String(hoje.getFullYear()),
-        fornecedor: cliente.nome || ''
-    }, 'Recibo_Devolucao_' + slugArquivo(cliente.nome) + '.docx');
+
+    const { Document, Paragraph, TextRun, AlignmentType } = D;
+    const P = (children, opts) => new Paragraph(Object.assign({ children }, opts || {}));
+    const T = (text, opts) => new TextRun(Object.assign({ text: String(text == null ? '' : text) }, opts || {}));
+
+    const doc = new Document({ sections: [{ children: [
+        P([ T('CASA GOIANITA', { bold: true, size: 28 }) ], { alignment: AlignmentType.CENTER }),
+        P([ T('RECIBO DE DEVOLUÇÃO DE MERCADORIAS', { bold: true, size: 24 }) ], { alignment: AlignmentType.CENTER }),
+        P([ T('Termo de Devolução e Quitação de Consignação', { italics: true, size: 18 }) ], { alignment: AlignmentType.CENTER }),
+        P([ T('') ]),
+        P([ T('Recebemos de C.G. (Casa Goianita) a(s) mercadoria(s) devolvida(s) por ter ocorrido o prazo de 180 dias sem a venda da(s) mesma(s).', { size: 20 }) ]),
+        P([ T('Declaro que me foram entregues nas mesmas condições de uso constantes da Nota de Entrada de Mercadorias Semi-Novas Nº ' + numeroNota(cliente) + ', pelo que dou plena e geral quitação.', { size: 20 }) ]),
+        P([ T('') ]),
+        P([ T('Goiânia, ' + String(hoje.getDate()).padStart(2, '0') + ' de ' + GOIANITA_MESES[hoje.getMonth()] + ' de ' + hoje.getFullYear() + '.', { size: 20 }) ]),
+        P([ T('') ]), P([ T('') ]), P([ T('') ]),
+        P([ T(cliente.nome || '', { bold: true }) ], { alignment: AlignmentType.CENTER }),
+        P([ T('_________________________________________') ], { alignment: AlignmentType.CENTER }),
+        P([ T('ASSINATURA DO FORNECEDOR / PROPRIETÁRIO') ], { alignment: AlignmentType.CENTER })
+    ] }] });
+
+    await baixarDocx(doc, 'Recibo_Devolucao_' + slugArquivo(cliente.nome) + '.docx');
 };
 
 // --- FINANCEIRO GERAL ---
