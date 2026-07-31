@@ -393,18 +393,24 @@ const db = {
 
             const cleanCliente = { ...clienteFinal };
             delete cleanCliente.senha;
-            try {
-                await docRef.set(cleanCliente, { merge: true });
-            } catch (err) {
-                console.error("[Firebase] Erro ao salvar cliente:", err);
-                alert("Aviso: Falha ao salvar no banco em nuvem. Salvo apenas localmente.");
-            }
 
+            // 1) Grava LOCAL primeiro — garante o cadastro e libera a tela mesmo se a nuvem demorar.
             const clientesLocais = db.clientes.getAll();
             const idx = clientesLocais.findIndex(c => c.id === id);
             if (idx !== -1) clientesLocais[idx] = cleanCliente;
             else clientesLocais.push(cleanCliente);
             localStorage.setItem(DB_KEYS.CLIENTES, JSON.stringify(clientesLocais));
+
+            // 2) Envia ao Firestore com TIMEOUT de segurança para o "Gravando..." nunca travar para sempre.
+            //    Se estourar o tempo, segue em frente — a sincronização em tempo real reenvia o registro depois.
+            try {
+                await Promise.race([
+                    docRef.set(cleanCliente, { merge: true }),
+                    new Promise((_, reject) => setTimeout(() => reject(new Error('tempo esgotado ao gravar na nuvem')), 6000))
+                ]);
+            } catch (err) {
+                console.warn('[Firebase] Cliente salvo localmente; a nuvem sincroniza em segundo plano:', err && err.message);
+            }
 
             if (!skipSync) db.importExport.syncToGoogleSheets();
             return clienteFinal;
@@ -532,18 +538,22 @@ const db = {
                 statusHistorico: statusHistorico
             };
 
-            try {
-                await docRef.set(produtoFinal, { merge: true });
-            } catch(e) {
-                console.error("Erro no Firestore, salvando apenas localmente: ", e);
-                alert("Aviso: Falha ao salvar no banco em nuvem. Salvo apenas localmente.");
-            }
-
+            // 1) Grava LOCAL primeiro — garante o registro e libera a tela mesmo se a nuvem demorar.
             const produtosLocais = db.produtos.getAll();
             const idx = produtosLocais.findIndex(p => p.id === id);
             if (idx !== -1) produtosLocais[idx] = produtoFinal;
             else produtosLocais.push(produtoFinal);
             localStorage.setItem(DB_KEYS.PRODUTOS, JSON.stringify(produtosLocais));
+
+            // 2) Envia ao Firestore com TIMEOUT de segurança para o "Gravando..." nunca travar para sempre.
+            try {
+                await Promise.race([
+                    docRef.set(produtoFinal, { merge: true }),
+                    new Promise((_, reject) => setTimeout(() => reject(new Error('tempo esgotado ao gravar na nuvem')), 6000))
+                ]);
+            } catch(e) {
+                console.warn("[Firebase] Produto salvo localmente; a nuvem sincroniza em segundo plano:", e && e.message);
+            }
 
             if (!skipSync) db.importExport.syncToGoogleSheets();
             return produtoFinal;
@@ -594,16 +604,20 @@ const db = {
                 data: data,
                 status: 'Realizado'
             };
-            try {
-                await docRef.set(pagamentoFinal);
-            } catch (err) {
-                console.error("[Firebase] Erro ao salvar pagamento:", err);
-                alert("Aviso: Falha ao salvar no banco em nuvem. Salvo apenas localmente.");
-            }
-
+            // 1) Grava LOCAL primeiro — garante o registro e libera a tela mesmo se a nuvem demorar.
             const pagamentosLocais = db.pagamentos.getAll();
             pagamentosLocais.push(pagamentoFinal);
             localStorage.setItem(DB_KEYS.PAGAMENTOS, JSON.stringify(pagamentosLocais));
+
+            // 2) Envia ao Firestore com TIMEOUT de segurança para o "Gravando..." nunca travar para sempre.
+            try {
+                await Promise.race([
+                    docRef.set(pagamentoFinal),
+                    new Promise((_, reject) => setTimeout(() => reject(new Error('tempo esgotado ao gravar na nuvem')), 6000))
+                ]);
+            } catch (err) {
+                console.warn("[Firebase] Pagamento salvo localmente; a nuvem sincroniza em segundo plano:", err && err.message);
+            }
 
             db.importExport.syncToGoogleSheets();
             return pagamentoFinal;
