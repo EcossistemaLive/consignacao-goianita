@@ -30,6 +30,10 @@ if (typeof firebase !== 'undefined') {
     window.GoianitaFirestore = firebase.firestore();
     window.GoianitaStorage = firebase.storage();
 
+    // Evita que um campo "undefined" (ex.: opcional não preenchido) faça o set() falhar
+    // silenciosamente e o registro nunca chegar à nuvem. Precisa vir antes de qualquer uso.
+    try { window.GoianitaFirestore.settings({ ignoreUndefinedProperties: true }); } catch (e) {}
+
     // Habilitar persistência off-line se possível
     window.GoianitaFirestore.enablePersistence().catch(err => {
         console.warn("[Firebase Firestore] Falha ao habilitar persistência offline:", err.code);
@@ -106,6 +110,39 @@ function removeTombstone(colecao, id) {
 }
 function tombstonesDe(colecao) {
     return getTombstones()[colecao] || [];
+}
+
+/**
+ * FILA DE REENVIO (sincronização automática)
+ * IDs de registros que ainda NÃO tiveram a gravação confirmada no Firestore. O app tenta
+ * esvaziar essa fila sozinho (ao abrir, quando a internet volta e a cada 15s), para que um
+ * cadastro feito num aparelho suba para a nuvem e apareça nos outros logins/celular sem
+ * depender de clicar em nada.
+ */
+const PENDING_SYNC_KEY = 'goianita_pending_sync';
+function getPendingSync() {
+    try { return JSON.parse(localStorage.getItem(PENDING_SYNC_KEY) || '{}'); }
+    catch (e) { return {}; }
+}
+function setPendingSync(p) {
+    localStorage.setItem(PENDING_SYNC_KEY, JSON.stringify(p));
+}
+function addPendingSync(colecao, id) {
+    if (!id) return;
+    const p = getPendingSync();
+    p[colecao] = p[colecao] || [];
+    if (!p[colecao].includes(id)) { p[colecao].push(id); setPendingSync(p); }
+}
+function removePendingSync(colecao, id) {
+    const p = getPendingSync();
+    if (p[colecao] && p[colecao].includes(id)) {
+        p[colecao] = p[colecao].filter(x => x !== id);
+        setPendingSync(p);
+    }
+}
+function pendingSyncTotal() {
+    const p = getPendingSync();
+    return (p.clientes || []).length + (p.produtos || []).length + (p.pagamentos || []).length;
 }
 
 // Inicialização de chaves seguras no localStorage
@@ -408,8 +445,10 @@ const db = {
                     docRef.set(cleanCliente, { merge: true }),
                     new Promise((_, reject) => setTimeout(() => reject(new Error('tempo esgotado ao gravar na nuvem')), 6000))
                 ]);
+                removePendingSync('clientes', id);
             } catch (err) {
-                console.warn('[Firebase] Cliente salvo localmente; a nuvem sincroniza em segundo plano:', err && err.message);
+                addPendingSync('clientes', id); // entra na fila de reenvio automático
+                console.warn('[Firebase] Cliente salvo localmente; será sincronizado automaticamente:', err && err.message);
             }
 
             if (!skipSync) db.importExport.syncToGoogleSheets();
@@ -551,8 +590,10 @@ const db = {
                     docRef.set(produtoFinal, { merge: true }),
                     new Promise((_, reject) => setTimeout(() => reject(new Error('tempo esgotado ao gravar na nuvem')), 6000))
                 ]);
+                removePendingSync('produtos', id);
             } catch(e) {
-                console.warn("[Firebase] Produto salvo localmente; a nuvem sincroniza em segundo plano:", e && e.message);
+                addPendingSync('produtos', id); // entra na fila de reenvio automático
+                console.warn("[Firebase] Produto salvo localmente; será sincronizado automaticamente:", e && e.message);
             }
 
             if (!skipSync) db.importExport.syncToGoogleSheets();
@@ -615,8 +656,10 @@ const db = {
                     docRef.set(pagamentoFinal),
                     new Promise((_, reject) => setTimeout(() => reject(new Error('tempo esgotado ao gravar na nuvem')), 6000))
                 ]);
+                removePendingSync('pagamentos', id);
             } catch (err) {
-                console.warn("[Firebase] Pagamento salvo localmente; a nuvem sincroniza em segundo plano:", err && err.message);
+                addPendingSync('pagamentos', id); // entra na fila de reenvio automático
+                console.warn("[Firebase] Pagamento salvo localmente; será sincronizado automaticamente:", err && err.message);
             }
 
             db.importExport.syncToGoogleSheets();
@@ -1060,6 +1103,132 @@ const db = {
 
 window.GoianitaDB = db;
 
+/**
+ * Reenvia à nuvem TODOS os registros que estão só no aparelho (não confirmados no
+ * Firestore) e devolve o motivo real de qualquer falha. Serve como reparo manual e
+ * diagnóstico: quando um cadastro "não replica" para outros logins/celular, isto mostra
+ * exatamente o porquê (admin não autenticado, permissão negada nas regras, sem conexão).
+ */
+db.utils.sincronizarPendentes = async () => {
+    if (typeof firebase === 'undefined' || !window.GoianitaFirestore) {
+        return { ok: false, motivo: 'Firebase não carregou nesta página.' };
+    }
+    const user = window.GoianitaAuth && window.GoianitaAuth.currentUser;
+    if (!user) {
+        return { ok: false, motivo: 'O administrador NÃO está autenticado no Firebase neste aparelho. Saia e faça login novamente para que os cadastros subam para a nuvem.' };
+    }
+
+    const colecoes = [
+        ['clientes', db.clientes.getAll()],
+        ['produtos', db.produtos.getAll()],
+        ['pagamentos', db.pagamentos.getAll()]
+    ];
+
+    let enviados = 0;
+    const erros = [];
+    for (const [nomeCol, itens] of colecoes) {
+        for (const item of itens) {
+            if (!item || !item.id) continue;
+            try {
+                await window.GoianitaFirestore.collection(nomeCol).doc(item.id).set(item, { merge: true });
+                enviados++;
+            } catch (e) {
+                erros.push(`${nomeCol}/${item.nome || item.id}: ${e && (e.code || e.message)}`);
+            }
+        }
+    }
+
+    return { ok: erros.length === 0, enviados, erros, uid: user.uid };
+};
+
+/**
+ * Chamado pelo botão "Sincronizar na nuvem": roda o reparo e mostra o resultado em
+ * linguagem simples, sem precisar abrir o console do navegador.
+ */
+window.goianitaForcarSync = async () => {
+    let res;
+    try {
+        res = await db.utils.sincronizarPendentes();
+    } catch (e) {
+        alert('Falha inesperada ao sincronizar: ' + (e && e.message));
+        return;
+    }
+    if (res.ok) {
+        alert(`Sincronização concluída. ${res.enviados} registro(s) enviado(s) à nuvem.\n\nAbra em outro login/celular e recarregue (Ctrl+Shift+R) para conferir.`);
+    } else if (res.motivo) {
+        alert('Não foi possível sincronizar:\n\n' + res.motivo);
+    } else {
+        alert(`Sincronização parcial: ${res.enviados} enviado(s), mas houve erros:\n\n` + res.erros.join('\n'));
+    }
+};
+
 // Ao carregar, consolida fornecedores duplicados por CPF já existentes na base local
 // (cura dados antigos criados antes do ID determinístico). Seguro rodar sempre.
 try { db.utils.dedupeClientesByCpf(); } catch (e) { console.warn('[Dedupe] falhou ao iniciar:', e); }
+
+/**
+ * Motor de sincronização automática: percorre a fila de reenvio e sobe para o Firestore
+ * cada registro ainda não confirmado, removendo-o da fila ao ter sucesso. Roda em segundo
+ * plano — nada de botão. Respeita tombstones (não re-sobe item excluído) e só age com o
+ * admin autenticado; se não estiver, mantém a fila e tenta de novo mais tarde.
+ */
+let goianitaAutoSyncRodando = false;
+async function goianitaAutoSyncPendentes() {
+    if (goianitaAutoSyncRodando) return;
+    if (typeof firebase === 'undefined' || !window.GoianitaFirestore) return;
+    const user = window.GoianitaAuth && window.GoianitaAuth.currentUser;
+    if (!user) return; // sem login no Firebase: tenta de novo no próximo ciclo
+    if (pendingSyncTotal() === 0) return;
+
+    goianitaAutoSyncRodando = true;
+    try {
+        const mapa = {
+            clientes: db.clientes.getAll(),
+            produtos: db.produtos.getAll(),
+            pagamentos: db.pagamentos.getAll()
+        };
+        const fila = getPendingSync();
+        for (const col of ['clientes', 'produtos', 'pagamentos']) {
+            const ids = (fila[col] || []).slice();
+            const tomb = tombstonesDe(col);
+            for (const id of ids) {
+                if (tomb.includes(id)) { removePendingSync(col, id); continue; } // excluído: não re-sobe
+                const item = (mapa[col] || []).find(x => x.id === id);
+                if (!item) { removePendingSync(col, id); continue; }               // sumiu localmente
+                try {
+                    await window.GoianitaFirestore.collection(col).doc(id).set(item, { merge: true });
+                    removePendingSync(col, id);
+                } catch (e) {
+                    // Mantém na fila para a próxima tentativa (conexão/permissão/sessão).
+                    console.warn(`[AutoSync] Ainda não subiu ${col}/${id}:`, e && (e.code || e.message));
+                }
+            }
+        }
+    } finally {
+        goianitaAutoSyncRodando = false;
+    }
+}
+window.goianitaAutoSyncPendentes = goianitaAutoSyncPendentes;
+
+// Semeia a fila com TUDO que já está local ao carregar a página. Assim, registros que
+// ficaram presos só no aparelho (ex.: cadastrados antes desta correção) são reconciliados
+// automaticamente na primeira sincronização. Itens já existentes na nuvem só levam um
+// merge inofensivo. Tombstones ficam de fora.
+(function semearFilaInicial() {
+    try {
+        ['clientes', 'produtos', 'pagamentos'].forEach(col => {
+            const tomb = tombstonesDe(col);
+            const itens = db[col].getAll();
+            itens.forEach(it => { if (it && it.id && !tomb.includes(it.id)) addPendingSync(col, it.id); });
+        });
+    } catch (e) { console.warn('[AutoSync] Falha ao semear fila inicial:', e); }
+})();
+
+// Dispara a sincronização automática: já ao carregar, quando a internet volta, sempre que
+// o admin autentica e periodicamente (a cada 15s) enquanto houver pendências.
+setTimeout(goianitaAutoSyncPendentes, 3000);
+window.addEventListener('online', goianitaAutoSyncPendentes);
+if (window.GoianitaAuth && window.GoianitaAuth.onAuthStateChanged) {
+    window.GoianitaAuth.onAuthStateChanged(u => { if (u) setTimeout(goianitaAutoSyncPendentes, 1500); });
+}
+setInterval(goianitaAutoSyncPendentes, 15000);
