@@ -1108,7 +1108,7 @@ function renderProdutoDetalhe() {
             uploadInput.disabled = true;
             produto.midias = produto.midias || [];
 
-            const webAppUrl = "https://script.google.com/macros/s/AKfycbxBeNmXFp0QebXe-oBPu1tCMVatOtDfpwb8VjggdvsQN-qnfFP45fb3fkC7_Q1tXNVs/exec";
+            const webAppUrl = "https://script.google.com/macros/s/AKfycbwnQYnax3uFAnnEq77PSEOLWAWvhCfnyA5BDuKsCTwCRwFN2AAKHpv6cDETmLVSvF_v/exec";
 
             try {
                 for (let i = 0; i < files.length; i++) {
