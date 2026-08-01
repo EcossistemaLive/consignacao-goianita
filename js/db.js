@@ -93,23 +93,54 @@ function getTombstones() {
     try { return JSON.parse(localStorage.getItem(DB_KEYS.TOMBSTONES) || '{}'); }
     catch (e) { return {}; }
 }
+/**
+ * A partir de 2026-07-31 cada exclusão guarda também QUANDO foi feita: `{ id, em }`.
+ * Motivo: a lista de exclusões é privada de cada aparelho e nunca expirava, então um
+ * aparelho que já tinha excluído um CPF passava a APAGAR DA NUVEM esse mesmo cadastro
+ * sempre que ele fosse recriado em outra máquina (o ID é derivado do CPF). Com a data, a
+ * exclusão só vale se for mais recente que o registro. Formato antigo (lista de textos)
+ * continua sendo lido, mas é tratado como exclusão sem data — e nunca destrói dados.
+ */
 function addTombstone(colecao, id) {
     if (!id) return;
     const t = getTombstones();
-    t[colecao] = t[colecao] || [];
-    if (!t[colecao].includes(id)) t[colecao].push(id);
+    const lista = (t[colecao] || []).filter(x => (typeof x === 'string' ? x : x && x.id) !== id);
+    lista.push({ id: id, em: new Date().toISOString() });
+    t[colecao] = lista;
     localStorage.setItem(DB_KEYS.TOMBSTONES, JSON.stringify(t));
 }
 function removeTombstone(colecao, id) {
     if (!id) return;
     const t = getTombstones();
-    if (t[colecao] && t[colecao].includes(id)) {
-        t[colecao] = t[colecao].filter(x => x !== id);
-        localStorage.setItem(DB_KEYS.TOMBSTONES, JSON.stringify(t));
-    }
+    if (!t[colecao]) return;
+    t[colecao] = t[colecao].filter(x => (typeof x === 'string' ? x : x && x.id) !== id);
+    localStorage.setItem(DB_KEYS.TOMBSTONES, JSON.stringify(t));
 }
+// Mantém o retorno como lista de IDs — todo o código existente usa `.includes(id)`.
 function tombstonesDe(colecao) {
-    return getTombstones()[colecao] || [];
+    return (getTombstones()[colecao] || []).map(x => (typeof x === 'string' ? x : (x && x.id))).filter(Boolean);
+}
+// Data da exclusão daquele ID (null se for do formato antigo, sem data).
+function tombstoneEm(colecao, id) {
+    const item = (getTombstones()[colecao] || []).find(x => (typeof x === 'string' ? x : x && x.id) === id);
+    if (!item || typeof item === 'string') return null;
+    return item.em || null;
+}
+// Data mais confiável do registro, para comparar com a exclusão.
+function dataDoRegistro(d) {
+    return (d && (d.atualizadoEm || d.dataCadastro || d.dataEntrada || d.data)) || null;
+}
+/**
+ * O registro que veio da nuvem é MAIS NOVO que a exclusão local? Se sim, ele foi recriado
+ * depois e deve ser aceito (a exclusão virou obsoleta e é descartada). Se a exclusão não
+ * tem data (formato antigo), NUNCA destruímos o registro — prioridade é não perder dado.
+ */
+function registroSuperaExclusao(colecao, id, dados) {
+    const em = tombstoneEm(colecao, id);
+    if (!em) return true;
+    const dr = dataDoRegistro(dados);
+    if (!dr) return false;
+    return new Date(dr).getTime() > (new Date(em).getTime() + 1000);
 }
 
 /**
@@ -186,16 +217,26 @@ function setupFirestoreSync() {
                 const firebaseClientes = [];
                 snapshot.forEach(doc => {
                     if (tomb.includes(doc.id)) {
-                        // Item marcado como excluído mas ainda presente no Firebase: apaga de novo e ignora.
-                        window.GoianitaFirestore.collection('clientes').doc(doc.id).delete().catch(() => {});
+                        const dados = doc.data();
+                        if (registroSuperaExclusao('clientes', doc.id, dados)) {
+                            // O registro da nuvem é mais novo que a exclusão local:
+                            // o item foi recriado legitmamente em outro aparelho.
+                            // Descartamos o tombstone obsoleto e aceitamos o dado.
+                            removeTombstone('clientes', doc.id);
+                            firebaseClientes.push({ id: doc.id, ...dados });
+                        } else {
+                            // A exclusão local é mais recente: apaga da nuvem normalmente.
+                            window.GoianitaFirestore.collection('clientes').doc(doc.id).delete().catch(() => {});
+                        }
                     } else {
                         firebaseClientes.push({ id: doc.id, ...doc.data() });
                     }
                 });
 
+                const tombAtual = tombstonesDe('clientes'); // reler após possíveis removeTombstone acima
                 const localClientes = JSON.parse(localStorage.getItem(DB_KEYS.CLIENTES) || '[]')
-                    .filter(c => !tomb.includes(c.id));
-                const toUpload = localClientes.filter(localC => !tomb.includes(localC.id) && !firebaseClientes.some(fbC => fbC.id === localC.id));
+                    .filter(c => !tombAtual.includes(c.id));
+                const toUpload = localClientes.filter(localC => !tombAtual.includes(localC.id) && !firebaseClientes.some(fbC => fbC.id === localC.id));
 
                 toUpload.forEach(async (c) => {
                     try { await window.GoianitaFirestore.collection('clientes').doc(c.id).set(c, {merge: true}); } catch(e){}
@@ -204,8 +245,8 @@ function setupFirestoreSync() {
                 const merged = [...firebaseClientes, ...toUpload];
                 localStorage.setItem(DB_KEYS.CLIENTES, JSON.stringify(merged));
 
-                // Consolida duplicatas por CPF que possam ter vindo do merge (offline/online, multi-dispositivo).
-                try { if (window.GoianitaDB) window.GoianitaDB.utils.dedupeClientesByCpf(); } catch (e) { console.warn('[Dedupe] falhou:', e); }
+                // NOTA: dedupeClientesByCpf removida daqui — rodava antes dos produtos chegarem
+                // e orfanava produtos ao excluir o ID mais novo. Roda apenas no save() agora.
 
                 window.dispatchEvent(new Event('goianitaDataChanged'));
                 if(syncCount < 3) checkSync();
@@ -217,15 +258,23 @@ function setupFirestoreSync() {
                 const firebaseProdutos = [];
                 snapshot.forEach(doc => {
                     if (tomb.includes(doc.id)) {
-                        window.GoianitaFirestore.collection('produtos').doc(doc.id).delete().catch(() => {});
+                        const dados = doc.data();
+                        if (registroSuperaExclusao('produtos', doc.id, dados)) {
+                            // Produto foi recriado depois da exclusão local: aceitar.
+                            removeTombstone('produtos', doc.id);
+                            firebaseProdutos.push({ id: doc.id, ...dados });
+                        } else {
+                            window.GoianitaFirestore.collection('produtos').doc(doc.id).delete().catch(() => {});
+                        }
                     } else {
                         firebaseProdutos.push({ id: doc.id, ...doc.data() });
                     }
                 });
 
+                const tombAtual = tombstonesDe('produtos');
                 const localProdutos = JSON.parse(localStorage.getItem(DB_KEYS.PRODUTOS) || '[]')
-                    .filter(p => !tomb.includes(p.id));
-                const toUpload = localProdutos.filter(localP => !tomb.includes(localP.id) && !firebaseProdutos.some(fbP => fbP.id === localP.id));
+                    .filter(p => !tombAtual.includes(p.id));
+                const toUpload = localProdutos.filter(localP => !tombAtual.includes(localP.id) && !firebaseProdutos.some(fbP => fbP.id === localP.id));
 
                 toUpload.forEach(async (p) => {
                     try { await window.GoianitaFirestore.collection('produtos').doc(p.id).set(p, {merge: true}); } catch(e){}
@@ -423,7 +472,8 @@ const db = {
             const clienteFinal = {
                 ...cliente,
                 id: id,
-                dataCadastro: dataCadastro
+                dataCadastro: dataCadastro,
+                atualizadoEm: new Date().toISOString()
             };
 
             // (Fornecedor não usa mais Firebase Auth — a senha vai como hash no cadastro.)
@@ -574,7 +624,8 @@ const db = {
                 sku: sku,
                 dataEntrada: dataEntrada,
                 dataLimite: dataLimite,
-                statusHistorico: statusHistorico
+                statusHistorico: statusHistorico,
+                atualizadoEm: new Date().toISOString()
             };
 
             // 1) Grava LOCAL primeiro — garante o registro e libera a tela mesmo se a nuvem demorar.

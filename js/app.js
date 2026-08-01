@@ -1491,28 +1491,36 @@ window.gerarNotaEntrada = async function() {
     const produtos = window.GoianitaDB.produtos.getByCliente(id);
     if (produtos.length === 0 && !confirm('Este fornecedor não tem produtos cadastrados. Gerar a Nota mesmo assim (sem itens)?')) return;
 
-    const { Document, Paragraph, TextRun, Table, TableRow, TableCell, WidthType, AlignmentType } = D;
+    const { Document, Paragraph, TextRun, Table, TableRow, TableCell, WidthType, AlignmentType, TableLayoutType, PageOrientation } = D;
     const P = (children, opts) => new Paragraph(Object.assign({ children }, opts || {}));
     const T = (text, opts) => new TextRun(Object.assign({ text: String(text == null ? '' : text) }, opts || {}));
-    const cel = (txt, o) => { o = o || {}; return new TableCell({ width: { size: o.w || 12, type: WidthType.PERCENTAGE }, children: [ new Paragraph({ alignment: o.align || AlignmentType.LEFT, children: [ new TextRun({ text: String(txt == null ? '' : txt), bold: !!o.bold, size: o.size || 16 }) ] }) ] }); };
+    const cel = (txt, o) => { o = o || {}; return new TableCell({ width: { size: o.w || 1500, type: WidthType.DXA }, margins: { top: 40, bottom: 40, left: 60, right: 60 }, children: [ new Paragraph({ alignment: o.align || AlignmentType.LEFT, children: [ new TextRun({ text: String(txt == null ? '' : txt), bold: !!o.bold, size: o.size || 16 }) ] }) ] }); };
 
+    // Larguras fixas de cada coluna (em twips). Sem isso, o Word encolhe as colunas e
+    // quebra o texto letra por letra. A soma (~13958) cabe na página A4 em paisagem.
+    const colW = [600, 3200, 1200, 1500, 2200, 1400, 1900, 1958];
     const cols = ['Item', 'Mercadoria', 'Condição', 'Embalagem', 'Estado', 'Prev. Venda', 'Avaliação (R$)', 'Valor Venda (R$)'];
-    const rows = [ new TableRow({ tableHeader: true, children: cols.map(c => cel(c, { bold: true, align: AlignmentType.CENTER })) }) ];
+    const rows = [ new TableRow({ tableHeader: true, children: cols.map((c, idx) => cel(c, { bold: true, align: AlignmentType.CENTER, w: colW[idx] })) }) ];
     produtos.forEach((p, i) => {
         rows.push(new TableRow({ children: [
-            cel(i + 1, { align: AlignmentType.CENTER }),
-            cel(p.nome || ''),
-            cel('USADO'),
-            cel(p.embalagem || ''),
-            cel(p.conservacao || ''),
-            cel(p.prevVenda || ''),
-            cel(fmtMoedaDoc(p.precoSugerido != null && p.precoSugerido !== 0 ? p.precoSugerido : p.precoVenda), { align: AlignmentType.RIGHT }),
-            cel(fmtMoedaDoc(p.precoVenda), { align: AlignmentType.RIGHT })
+            cel(i + 1, { align: AlignmentType.CENTER, w: colW[0] }),
+            cel(p.nome || '', { w: colW[1] }),
+            cel('USADO', { align: AlignmentType.CENTER, w: colW[2] }),
+            cel(p.embalagem || '', { w: colW[3] }),
+            cel(p.conservacao || '', { w: colW[4] }),
+            cel(p.prevVenda || '', { align: AlignmentType.CENTER, w: colW[5] }),
+            cel(fmtMoedaDoc(p.precoSugerido != null && p.precoSugerido !== 0 ? p.precoSugerido : p.precoVenda), { align: AlignmentType.RIGHT, w: colW[6] }),
+            cel(fmtMoedaDoc(p.precoVenda), { align: AlignmentType.RIGHT, w: colW[7] })
         ] }));
     });
 
     const contato = cliente.contato || cliente.email || '';
-    const doc = new Document({ sections: [{ children: [
+    const doc = new Document({ sections: [{
+        properties: { page: {
+            size: { orientation: PageOrientation.LANDSCAPE, width: 16838, height: 11906 },
+            margin: { top: 1000, bottom: 1000, left: 1000, right: 1000 }
+        } },
+        children: [
         P([ T('CASA GOIANITA', { bold: true, size: 28 }) ], { alignment: AlignmentType.CENTER }),
         P([ T('NOTA DE ENTRADA DE MERCADORIAS SEMI-NOVAS P/ VENDA', { bold: true, size: 24 }) ], { alignment: AlignmentType.CENTER }),
         P([ T('Documento de Recebimento e Avaliação de Consignação — Nº: ' + numeroNota(cliente), { italics: true, size: 18 }) ], { alignment: AlignmentType.CENTER }),
@@ -1523,7 +1531,7 @@ window.gerarNotaEntrada = async function() {
         P([ T('Telefone: ', { bold: true }), T(cliente.telefone || ''), T('     Contato: ', { bold: true }), T(contato) ]),
         P([ T('Observações: ', { bold: true }), T('') ]),
         P([ T('') ]),
-        new Table({ width: { size: 100, type: WidthType.PERCENTAGE }, rows: rows }),
+        new Table({ columnWidths: colW, layout: TableLayoutType.FIXED, width: { size: 13958, type: WidthType.DXA }, rows: rows }),
         P([ T('') ]),
         P([ T('Prazo de Avaliação: 7 dias', { bold: true }) ]),
         P([ T('') ]),

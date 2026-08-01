@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Diagnóstico da Nuvem - Goianita</title>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-storage-compat.js"></script>
+    <link rel="stylesheet" href="../css/style.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        body { background: #f4f4f0; }
+        .diag-wrap { max-width: 900px; margin: 0 auto; padding: 24px; }
+        .diag-card { background: #fff; border-radius: 10px; padding: 20px 24px; margin-bottom: 16px; box-shadow: 0 2px 8px rgba(0,0,0,.06); }
+        .diag-card h3 { margin: 0 0 12px; font-size: 17px; }
+        .linha { display: flex; justify-content: space-between; gap: 16px; padding: 7px 0; border-bottom: 1px dashed #e3e3dd; font-size: 15px; }
+        .linha:last-child { border-bottom: none; }
+        .rot { color: #555; }
+        .val { font-weight: 600; text-align: right; }
+        .ok { color: #1b7f3b; }
+        .ruim { color: #c62828; }
+        .alerta { color: #b26a00; }
+        .conclusao { border-left: 5px solid #0a3d2c; background: #f0f6f2; padding: 16px 18px; border-radius: 6px; font-size: 15px; line-height: 1.55; }
+        .conclusao.erro { border-left-color: #c62828; background: #fdf1f1; }
+        .conclusao.bom { border-left-color: #1b7f3b; background: #f0f8f2; }
+        ul.lista { margin: 8px 0 0 18px; font-size: 14px; }
+        .cod { font-family: Consolas, monospace; background: #f2f2ee; padding: 2px 6px; border-radius: 4px; font-size: 13px; }
+        .btn-linha { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 18px; }
+    </style>
+</head>
+<body>
+    <div class="diag-wrap">
+        <h1 style="font-size:23px; margin-bottom:4px;">Diagnóstico da Nuvem</h1>
+        <p style="color:#666; margin-top:0; font-size:14px;">Verifica se este aparelho consegue gravar e ler os dados na nuvem (Firebase). Rode nesta máquina e, depois, na outra.</p>
+
+        <div class="btn-linha">
+            <button class="btn btn-primary" onclick="rodarDiagnostico()"><i class="fa-solid fa-rotate"></i> Rodar de novo</button>
+            <a href="clientes.html" class="btn btn-secondary"><i class="fa-solid fa-arrow-left"></i> Voltar</a>
+        </div>
+
+        <div id="saida"><p>Verificando...</p></div>
+    </div>
+
+    <script src="../js/db.js"></script>
+    <script>
+    const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+    function esperarAuth() {
+        return new Promise(resolve => {
+            if (!window.GoianitaAuth) return resolve(null);
+            if (window.GoianitaAuth.currentUser) return resolve(window.GoianitaAuth.currentUser);
+            const t = setTimeout(() => resolve(window.GoianitaAuth.currentUser || null), 5000);
+            window.GoianitaAuth.onAuthStateChanged(u => { if (u) { clearTimeout(t); resolve(u); } });
+        });
+    }
+
+    async function rodarDiagnostico() {
+        const out = document.getElementById('saida');
+        out.innerHTML = '<p>Verificando... aguarde alguns segundos.</p>';
+
+        const r = {
+            sdk: (typeof firebase !== 'undefined' && !!window.GoianitaFirestore),
+            projeto: (typeof firebaseConfig !== 'undefined' ? firebaseConfig.projectId : '?'),
+            online: navigator.onLine,
+            user: null, leitura: null, erroLeitura: null,
+            nuvem: {}, local: {}, escrita: null, erroEscrita: null,
+            soLocal: [], orfaos: []
+        };
+
+        // 1. Autenticação
+        const user = await esperarAuth();
+        r.user = user;
+
+        // 2. Locais
+        r.local.clientes = window.GoianitaDB.clientes.getAll();
+        r.local.produtos = window.GoianitaDB.produtos.getAll();
+        r.local.pagamentos = window.GoianitaDB.pagamentos.getAll();
+
+        // 3. Leitura DIRETO do servidor (ignora o cache local, para saber o que existe de verdade na nuvem)
+        if (r.sdk && user) {
+            try {
+                for (const col of ['clientes', 'produtos', 'pagamentos']) {
+                    const snap = await window.GoianitaFirestore.collection(col).get({ source: 'server' });
+                    r.nuvem[col] = snap.docs.map(d => Object.assign({ id: d.id }, d.data()));
+                }
+                r.leitura = true;
+            } catch (e) {
+                r.leitura = false;
+                r.erroLeitura = (e && (e.code || e.message)) || 'erro desconhecido';
+            }
+
+            // 4. Teste de escrita real
+            try {
+                await window.GoianitaFirestore.collection('_diagnostico').doc('teste').set({
+                    quando: new Date().toISOString(),
+                    porQuem: user.email || user.uid
+                }, { merge: true });
+                r.escrita = true;
+            } catch (e) {
+                r.escrita = false;
+                r.erroEscrita = (e && (e.code || e.message)) || 'erro desconhecido';
+            }
+        }
+
+        // 5. Quem está só neste aparelho (não subiu para a nuvem)
+        if (r.leitura) {
+            const idsNuvem = new Set((r.nuvem.clientes || []).map(c => c.id));
+            r.soLocal = r.local.clientes.filter(c => !idsNuvem.has(c.id));
+        }
+
+        // 6. Produtos órfãos: apontam para um fornecedor que não existe aqui (ficam invisíveis na ficha)
+        const idsCliLocal = new Set(r.local.clientes.map(c => c.id));
+        r.orfaos = r.local.produtos.filter(p => !idsCliLocal.has(p.clienteId));
+
+        desenhar(r);
+    }
+
+    function desenhar(r) {
+        const L = (rot, val, cls) => `<div class="linha"><span class="rot">${rot}</span><span class="val ${cls || ''}">${val}</span></div>`;
+        let h = '';
+
+        h += '<div class="diag-card"><h3>1. Conexão e conta</h3>';
+        h += L('Biblioteca do Firebase carregou', r.sdk ? 'Sim' : 'NÃO', r.sdk ? 'ok' : 'ruim');
+        h += L('Projeto', esc(r.projeto));
+        h += L('Internet', r.online ? 'Conectado' : 'SEM conexão', r.online ? 'ok' : 'ruim');
+        if (r.user) {
+            h += L('Conta autenticada', esc(r.user.email || '(anônima)'), 'ok');
+            h += L('Tipo de acesso', r.user.isAnonymous ? 'ANÔNIMO' : 'E-mail/senha', r.user.isAnonymous ? 'alerta' : 'ok');
+            h += L('Identificador (uid)', '<span class="cod">' + esc(r.user.uid) + '</span>');
+        } else {
+            h += L('Conta autenticada', 'NÃO AUTENTICADO', 'ruim');
+        }
+        h += '</div>';
+
+        h += '<div class="diag-card"><h3>2. Leitura e gravação na nuvem</h3>';
+        if (!r.user) {
+            h += '<p class="ruim">Não foi possível testar: este aparelho não está autenticado no Firebase.</p>';
+        } else {
+            h += L('Consegue LER da nuvem', r.leitura ? 'Sim' : 'NÃO — ' + esc(r.erroLeitura), r.leitura ? 'ok' : 'ruim');
+            h += L('Consegue GRAVAR na nuvem', r.escrita ? 'Sim' : 'NÃO — ' + esc(r.erroEscrita), r.escrita ? 'ok' : 'ruim');
+        }
+        h += '</div>';
+
+        h += '<div class="diag-card"><h3>3. Contagem: neste aparelho x na nuvem</h3>';
+        ['clientes', 'produtos', 'pagamentos'].forEach(col => {
+            const loc = (r.local[col] || []).length;
+            const nuv = r.leitura ? (r.nuvem[col] || []).length : '?';
+            const cls = (r.leitura && loc !== nuv) ? 'alerta' : 'ok';
+            h += L(col.charAt(0).toUpperCase() + col.slice(1), 'aqui: ' + loc + ' &nbsp;|&nbsp; nuvem: ' + nuv, cls);
+        });
+        h += L('Na fila esperando subir', (typeof pendingSyncTotal === 'function' ? pendingSyncTotal() : '?'));
+        h += '</div>';
+
+        if (r.soLocal.length > 0) {
+            h += '<div class="diag-card"><h3>4. Fornecedores que existem SÓ neste aparelho</h3><p style="font-size:14px;color:#666;margin-top:0;">Estes nunca chegaram à nuvem — por isso não aparecem para os outros admins:</p><ul class="lista">';
+            r.soLocal.forEach(c => { h += '<li><b>' + esc(c.nome) + '</b> — CPF ' + esc(c.cpf) + ' <span class="cod">' + esc(c.id) + '</span></li>'; });
+            h += '</ul></div>';
+        }
+
+        if (r.orfaos.length > 0) {
+            h += '<div class="diag-card"><h3>5. Produtos "órfãos" (fornecedor não encontrado)</h3><p style="font-size:14px;color:#666;margin-top:0;">Estes produtos apontam para um fornecedor que não existe neste aparelho — é por isso que não aparecem na ficha dele:</p><ul class="lista">';
+            r.orfaos.slice(0, 30).forEach(p => { h += '<li><b>' + esc(p.nome) + '</b> — aponta para <span class="cod">' + esc(p.clienteId) + '</span></li>'; });
+            h += '</ul></div>';
+        }
+
+        // Conclusão
+        let txt = '', cls = 'bom';
+        if (!r.sdk) { txt = 'A biblioteca do Firebase não carregou nesta página. O sistema está funcionando só com dados locais.'; cls = 'erro'; }
+        else if (!r.online) { txt = 'Este aparelho está SEM conexão. Os dados ficam salvos aqui e sobem sozinhos quando a internet voltar.'; cls = 'erro'; }
+        else if (!r.user) { txt = 'CAUSA ENCONTRADA: este aparelho NÃO está autenticado no Firebase. Sem isso nada sobe para a nuvem nem desce dos outros admins. Solução: sair do sistema e entrar novamente usando o e-mail e a senha do administrador (não o atalho offline).'; cls = 'erro'; }
+        else if (r.escrita === false && String(r.erroEscrita).indexOf('permission') !== -1) { txt = 'CAUSA ENCONTRADA: a nuvem está RECUSANDO a gravação (' + esc(r.erroEscrita) + '). As regras de segurança do Firestore precisam ser liberadas para usuários autenticados. Me mande esta tela que eu passo a regra exata.'; cls = 'erro'; }
+        else if (r.leitura === false && String(r.erroLeitura).indexOf('permission') !== -1) { txt = 'CAUSA ENCONTRADA: a nuvem está RECUSANDO a leitura (' + esc(r.erroLeitura) + '). É regra de segurança do Firestore. Me mande esta tela que eu passo a regra exata.'; cls = 'erro'; }
+        else if (r.escrita === false || r.leitura === false) { txt = 'Houve falha de comunicação com a nuvem. Leitura: ' + (r.leitura ? 'ok' : esc(r.erroLeitura)) + ' / Gravação: ' + (r.escrita ? 'ok' : esc(r.erroEscrita)) + '. Me mande esta tela.'; cls = 'erro'; }
+        else if (r.soLocal.length > 0) { txt = 'Leitura e gravação funcionam, mas ' + r.soLocal.length + ' fornecedor(es) ainda não subiram. Deixe esta página aberta por 1 minuto: a sincronização automática deve enviá-los. Se continuarem aqui, me mande esta tela.'; cls = 'erro'; }
+        else if (r.orfaos.length > 0) { txt = 'A nuvem está OK. Porém há ' + r.orfaos.length + ' produto(s) apontando para um fornecedor inexistente — é isso que faz produtos "desaparecerem" da ficha. Me mande esta tela para eu religar esses produtos ao fornecedor certo.'; cls = 'erro'; }
+        else { txt = 'Tudo certo neste aparelho: autenticado, lendo e gravando na nuvem, sem pendências e sem produtos órfãos.'; cls = 'bom'; }
+
+        h += '<div class="diag-card"><h3>Conclusão</h3><div class="conclusao ' + cls + '">' + txt + '</div></div>';
+
+        document.getElementById('saida').innerHTML = h;
+    }
+
+    window.addEventListener('load', () => setTimeout(rodarDiagnostico, 1200));
+    </script>
+</body>
+</html>
