@@ -105,11 +105,14 @@
                 </form>
 
                 <div class="login-toggle">
+                    <a id="link-esqueci" style="cursor:pointer;">Esqueci minha senha &rarr;</a>
+                </div>
+                <div class="login-toggle" style="margin-top:6px;">
                     Administrador sem acesso? <a id="link-para-cadastro">Primeiro acesso &rarr;</a>
                 </div>
             </div>
 
-            <!-- ===== FORMULÁRIO DE CADASTRO (PRIMEIRO ACESSO ADMIN) ===== -->
+            <!-- ===== FORMULÁRIO CADASTRO (PRIMEIRO ACESSO ADMIN) ===== -->
             <div id="section-cadastro" style="display: none;">
                 <p class="section-title">Cadastro de Administrador</p>
                 <hr class="section-divider">
@@ -128,9 +131,75 @@
                     </div>
                     <button type="submit" id="btn-cadastrar" class="btn btn-gold" style="padding: 16px; font-size: 16px; margin-top: 12px;">Criar Conta e Entrar</button>
                 </form>
-
                 <div class="login-toggle">
                     <a id="link-para-login">&larr; Voltar ao Login</a>
+                </div>
+            </div>
+
+            <!-- ===== RECUPERAÇÃO DE SENHA ===== -->
+            <div id="section-esqueci" style="display: none;">
+                <p class="section-title">Recuperar Senha</p>
+                <hr class="section-divider">
+
+                <!-- Seletor de perfil -->
+                <div id="esqueci-escolha">
+                    <p style="color:#e6e1da;font-size:14px;margin-bottom:16px;text-align:center;">Selecione seu perfil:</p>
+                    <div style="display:flex;gap:12px;">
+                        <button id="btn-esqueci-admin" class="btn btn-secondary" style="flex:1;padding:14px;font-size:14px;">
+                            <i class="fa-solid fa-user-shield"></i><br>Administrador
+                        </button>
+                        <button id="btn-esqueci-fornecedor" class="btn btn-secondary" style="flex:1;padding:14px;font-size:14px;">
+                            <i class="fa-solid fa-user"></i><br>Fornecedor
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Recuperação Admin -->
+                <div id="esqueci-admin" style="display:none;">
+                    <p style="color:#e6e1da;font-size:13px;margin-bottom:14px;">Informe seu e-mail. O Firebase enviará um link para redefinir sua senha.</p>
+                    <form class="login-form" id="form-reset-admin">
+                        <div class="form-group">
+                            <label class="form-label" style="color:#e6e1da;">E-mail do Administrador</label>
+                            <input type="email" id="reset-email" class="form-control" placeholder="seu@email.com.br" required style="background-color:rgba(255,255,255,0.9);color:var(--text-main);">
+                        </div>
+                        <button type="submit" id="btn-reset-admin" class="btn btn-gold" style="padding:14px;font-size:15px;margin-top:8px;">Enviar Link de Recuperação</button>
+                    </form>
+                    <div id="msg-reset-admin" style="margin-top:12px;font-size:13px;"></div>
+                    <div class="login-toggle" style="margin-top:12px;">
+                        <a id="link-volta-admin">&larr; Escolher perfil</a>
+                    </div>
+                </div>
+
+                <!-- Recuperação Fornecedor -->
+                <div id="esqueci-fornecedor" style="display:none;">
+                    <p style="color:#e6e1da;font-size:13px;margin-bottom:14px;">Informe seu CPF e o e-mail cadastrado para verificar sua identidade.</p>
+                    <form class="login-form" id="form-reset-fornecedor">
+                        <div class="form-group">
+                            <label class="form-label" style="color:#e6e1da;">CPF</label>
+                            <input type="text" id="reset-cpf" class="form-control" placeholder="000.000.000-00" required style="background-color:rgba(255,255,255,0.9);color:var(--text-main);">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label" style="color:#e6e1da;">E-mail cadastrado</label>
+                            <input type="email" id="reset-email-forn" class="form-control" placeholder="email@exemplo.com" required style="background-color:rgba(255,255,255,0.9);color:var(--text-main);">
+                        </div>
+                        <div class="form-group" id="grupo-nova-senha" style="display:none;">
+                            <label class="form-label" style="color:#e6e1da;">Nova Senha</label>
+                            <input type="password" id="reset-nova-senha" class="form-control" placeholder="Mínimo 6 caracteres" minlength="6" style="background-color:rgba(255,255,255,0.9);color:var(--text-main);">
+                        </div>
+                        <div class="form-group" id="grupo-confirma-senha" style="display:none;">
+                            <label class="form-label" style="color:#e6e1da;">Confirmar Nova Senha</label>
+                            <input type="password" id="reset-confirma-senha" class="form-control" placeholder="Repita a senha" minlength="6" style="background-color:rgba(255,255,255,0.9);color:var(--text-main);">
+                        </div>
+                        <button type="submit" id="btn-reset-forn" class="btn btn-gold" style="padding:14px;font-size:15px;margin-top:8px;">Verificar Identidade</button>
+                    </form>
+                    <div id="msg-reset-forn" style="margin-top:12px;font-size:13px;"></div>
+                    <div class="login-toggle" style="margin-top:12px;">
+                        <a id="link-volta-forn">&larr; Escolher perfil</a>
+                    </div>
+                </div>
+
+                <div class="login-toggle" style="margin-top:16px;">
+                    <a id="link-esqueci-login">&larr; Voltar ao Login</a>
                 </div>
             </div>
 
@@ -166,20 +235,181 @@
             'elber':    'elber@goianita.com.br'
         };
 
+        // Cache dos admins carregados do Firestore (complementa a lista hardcoded)
+        let adminsFirestore = [];
+        let atalhosFirestore = {};
+        function carregarAdminsFirestore() {
+            if (!window.GoianitaFirestore) { setTimeout(carregarAdminsFirestore, 800); return; }
+            window.GoianitaFirestore.collection('admins').where('ativo', '!=', false).get()
+                .then(snap => {
+                    snap.forEach(doc => {
+                        const a = doc.data();
+                        if (a.email && !adminsFirestore.includes(a.email)) adminsFirestore.push(a.email);
+                        if (a.atalho && a.email) atalhosFirestore[a.atalho] = a.email;
+                    });
+                }).catch(() => {});
+        }
+        carregarAdminsFirestore();
+
+        function isAdminAutorizado(email) {
+            return ADMINS_AUTORIZADOS.includes(email) || adminsFirestore.includes(email);
+        }
+        function resolverAtalho(user) {
+            return ATALHOS_ADMIN[user] || atalhosFirestore[user] || user;
+        }
+
         // ─────────────────────────────────────────────
-        // ALTERNAR ENTRE LOGIN E CADASTRO
+        // ALTERNAR ENTRE SEÇÕES
         // ─────────────────────────────────────────────
+        function mostrarSec(id) {
+            ['section-login','section-cadastro','section-esqueci'].forEach(s => {
+                const el = document.getElementById(s);
+                if (el) el.style.display = (s === id) ? 'block' : 'none';
+            });
+        }
+
         document.getElementById('link-para-cadastro').addEventListener('click', () => {
-            document.getElementById('section-login').style.display = 'none';
-            document.getElementById('section-cadastro').style.display = 'block';
+            mostrarSec('section-cadastro');
             document.getElementById('cad-email').focus();
         });
-
         document.getElementById('link-para-login').addEventListener('click', () => {
-            document.getElementById('section-cadastro').style.display = 'none';
-            document.getElementById('section-login').style.display = 'block';
+            mostrarSec('section-login');
             document.getElementById('username').focus();
         });
+        document.getElementById('link-esqueci').addEventListener('click', () => {
+            mostrarSec('section-esqueci');
+            // reseta o estado interno
+            document.getElementById('esqueci-escolha').style.display = 'block';
+            document.getElementById('esqueci-admin').style.display = 'none';
+            document.getElementById('esqueci-fornecedor').style.display = 'none';
+        });
+        document.getElementById('link-esqueci-login').addEventListener('click', () => mostrarSec('section-login'));
+
+        // Seleção do perfil na tela de esqueci senha
+        document.getElementById('btn-esqueci-admin').addEventListener('click', () => {
+            document.getElementById('esqueci-escolha').style.display = 'none';
+            document.getElementById('esqueci-admin').style.display = 'block';
+            document.getElementById('reset-email').focus();
+        });
+        document.getElementById('btn-esqueci-fornecedor').addEventListener('click', () => {
+            document.getElementById('esqueci-escolha').style.display = 'none';
+            document.getElementById('esqueci-fornecedor').style.display = 'block';
+            document.getElementById('reset-cpf').focus();
+        });
+        document.getElementById('link-volta-admin').addEventListener('click', () => {
+            document.getElementById('esqueci-admin').style.display = 'none';
+            document.getElementById('esqueci-escolha').style.display = 'block';
+        });
+        document.getElementById('link-volta-forn').addEventListener('click', () => {
+            document.getElementById('esqueci-fornecedor').style.display = 'none';
+            document.getElementById('esqueci-escolha').style.display = 'block';
+            // reseta estado do formulário
+            document.getElementById('grupo-nova-senha').style.display = 'none';
+            document.getElementById('grupo-confirma-senha').style.display = 'none';
+            document.getElementById('btn-reset-forn').textContent = 'Verificar Identidade';
+            document.getElementById('btn-reset-forn').dataset.verificado = '';
+            document.getElementById('msg-reset-forn').textContent = '';
+        });
+
+        // ── Reset Admin (Firebase sendPasswordResetEmail) ──
+        document.getElementById('form-reset-admin').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const rawEmail = document.getElementById('reset-email').value.trim().toLowerCase();
+            const email = resolverAtalho(rawEmail);
+            const btn = document.getElementById('btn-reset-admin');
+            const msg = document.getElementById('msg-reset-admin');
+
+            if (!window.GoianitaAuth) { msg.style.color='#c0392b'; msg.textContent = 'Sem conexão com o Firebase.'; return; }
+
+            btn.disabled = true;
+            btn.textContent = 'Enviando...';
+            try {
+                await window.GoianitaAuth.sendPasswordResetEmail(email);
+                msg.style.color = '#1e7b3a';
+                msg.textContent = 'E-mail de recuperação enviado para ' + email + '. Verifique sua caixa de entrada (e o spam).';
+                btn.textContent = 'E-mail enviado ✔';
+            } catch(err) {
+                msg.style.color = '#c0392b';
+                if (err.code === 'auth/user-not-found') {
+                    msg.textContent = 'E-mail não encontrado. Se for seu primeiro acesso, use a opção "Primeiro acesso" na tela de login.';
+                } else {
+                    msg.textContent = 'Erro: ' + err.message;
+                }
+                btn.disabled = false;
+                btn.textContent = 'Enviar Link de Recuperação';
+            }
+        });
+
+        // ── Reset Fornecedor (CPF + e-mail → novo hash) ──
+        let clienteParaReset = null;
+        document.getElementById('form-reset-fornecedor').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const btn = document.getElementById('btn-reset-forn');
+            const msgEl = document.getElementById('msg-reset-forn');
+
+            // Fase 2: salvar nova senha
+            if (btn.dataset.verificado === '1') {
+                const nova = document.getElementById('reset-nova-senha').value;
+                const conf = document.getElementById('reset-confirma-senha').value;
+                if (nova !== conf) { msgEl.style.color='#c0392b'; msgEl.textContent = 'As senhas não coincidem.'; return; }
+                if (nova.length < 6) { msgEl.style.color='#c0392b'; msgEl.textContent = 'Senha muito curta (mínimo 6 caracteres).'; return; }
+                btn.disabled = true; btn.textContent = 'Salvando...';
+                try {
+                    const novaHash = await window.goianitaHash(nova);
+                    await window.GoianitaDB.clientes.save({ ...clienteParaReset, senha: nova }, false);
+                    msgEl.style.color = '#1e7b3a';
+                    msgEl.textContent = 'Senha alterada com sucesso! Redirecionando...';
+                    setTimeout(() => mostrarSec('section-login'), 2000);
+                } catch(err) {
+                    msgEl.style.color = '#c0392b'; msgEl.textContent = 'Erro ao salvar: ' + err.message;
+                    btn.disabled = false; btn.textContent = 'Salvar Nova Senha';
+                }
+                return;
+            }
+
+            // Fase 1: verificar CPF + e-mail
+            const cpf = document.getElementById('reset-cpf').value.replace(/\D/g,'');
+            const email = document.getElementById('reset-email-forn').value.trim().toLowerCase();
+            if (!cpf || !email) return;
+
+            btn.disabled = true; btn.textContent = 'Verificando...';
+            msgEl.textContent = '';
+
+            try {
+                // Aguarda até 8 tentativas (sync do Firestore pode demorar)
+                if (window.GoianitaAuth && !window.GoianitaAuth.currentUser) {
+                    try { await window.GoianitaAuth.signInAnonymously(); } catch(_) {}
+                }
+                let cli = null;
+                for (let t = 0; t < 8 && !cli; t++) {
+                    cli = window.GoianitaDB.clientes.getAll().find(c =>
+                        c.cpf && c.cpf.replace(/\D/g,'') === cpf
+                    );
+                    if (!cli) await new Promise(r => setTimeout(r, 350));
+                }
+                if (!cli) {
+                    msgEl.style.color='#c0392b'; msgEl.textContent = 'CPF não encontrado no sistema.';
+                    btn.disabled = false; btn.textContent = 'Verificar Identidade'; return;
+                }
+                const emailCadastrado = (cli.email || '').trim().toLowerCase();
+                if (emailCadastrado !== email) {
+                    msgEl.style.color='#c0392b'; msgEl.textContent = 'CPF ou e-mail não conferem. Verifique os dados e tente novamente.';
+                    btn.disabled = false; btn.textContent = 'Verificar Identidade'; return;
+                }
+                // Identidade confirmada: mostra campos de nova senha
+                clienteParaReset = cli;
+                document.getElementById('grupo-nova-senha').style.display = 'block';
+                document.getElementById('grupo-confirma-senha').style.display = 'block';
+                btn.dataset.verificado = '1';
+                btn.disabled = false; btn.textContent = 'Salvar Nova Senha';
+                msgEl.style.color = '#1e7b3a'; msgEl.textContent = 'Identidade confirmada! Defina sua nova senha abaixo.';
+                document.getElementById('reset-nova-senha').focus();
+            } catch(err) {
+                msgEl.style.color='#c0392b'; msgEl.textContent = 'Erro: ' + err.message;
+                btn.disabled = false; btn.textContent = 'Verificar Identidade';
+            }
+        });
+
 
         // ─────────────────────────────────────────────
         // LOGIN NORMAL
@@ -191,8 +421,8 @@
             const btn  = document.getElementById('btn-login');
 
             const lowerUser  = user.toLowerCase();
-            const isAdmin    = lowerUser.includes('@') || Object.keys(ATALHOS_ADMIN).includes(lowerUser);
-            const adminEmail = ATALHOS_ADMIN[lowerUser] || lowerUser;
+            const isAdmin    = lowerUser.includes('@') || Object.keys(ATALHOS_ADMIN).includes(lowerUser) || Object.keys(atalhosFirestore).includes(lowerUser);
+            const adminEmail = resolverAtalho(lowerUser);
 
             if (isAdmin) {
                 // Modo offline
@@ -310,9 +540,9 @@
                 return;
             }
 
-            // Validar se o e-mail é autorizado
-            if (!ADMINS_AUTORIZADOS.includes(email)) {
-                alert('Este e-mail não está na lista de administradores autorizados.\n\nEntre em contato com o administrador do sistema para liberar seu acesso.');
+            // Valida se o e-mail é autorizado (lista hardcoded + Firestore)
+            if (!isAdminAutorizado(email)) {
+                alert('Este e-mail não está na lista de administradores autorizados.\n\nPeça para um admin cadastrar seu e-mail na página Administradores do sistema.');
                 return;
             }
 

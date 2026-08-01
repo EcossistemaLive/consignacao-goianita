@@ -1356,10 +1356,12 @@ function imprimirContratoCliente() {
         <div class="print-header">
             <h2 style="text-align: center; margin-bottom: 20px;">CONTRATO DE CONSIGNAÇÃO DE PEÇAS E UTILIDADES</h2>
             
-            <h3 style="font-size: 22px; margin-top: 20px;">QUALIFICAÇÃO DAS PARTES</h3>
-            <p style="font-size: 20px; text-align: justify; margin-bottom: 10px;"><strong>CONSIGNATÁRIA:</strong> VIRTUAL DISTRIBUIDORA DE UTILIDADES DOMÉSTICAS LTDA (CASAS GOIANITA), sociedade limitada, inscrita no CNPJ sob o nº 11.316.256/0001-29, situada na Rua 85, nº 369, Quadra F19, Lote 45, Setor Sul, Goiânia/GO, CEP: 74080-010.</p>
-            <p style="font-size: 20px; text-align: justify; margin-bottom: 10px;"><strong>CONSIGNANTE:</strong> ${esc(cliente.nome)}, inscrito(a) no CPF/CNPJ sob o nº ${esc(cliente.cpf)}, telefone ${esc(cliente.telefone)}, e-mail ${esc(cliente.email)}.</p>
-            <p style="font-size: 20px; text-align: justify; margin-bottom: 20px;">As partes acima qualificadas celebram, entre si, o presente instrumento particular, que será regido pela legislação aplicável, em especial, pelos artigos 534 e seguintes do Código Civil Brasileiro e pelas cláusulas e disposições seguintes:</p>
+            <div style="border: 2px solid #1a3c6e; border-radius: 7px; padding: 16px 20px; margin-bottom: 20px; background: #f4f8ff;">
+                <h3 style="font-size: 22px; margin-top: 0; margin-bottom: 14px; color: #1a3c6e;">QUALIFICAÇÃO DAS PARTES</h3>
+                <p style="font-size: 20px; text-align: justify; margin-bottom: 10px;"><strong>CONSIGNATÁRIA:</strong> VIRTUAL DISTRIBUIDORA DE UTILIDADES DOMÉSTICAS LTDA (CASAS GOIANITA), sociedade limitada, inscrita no CNPJ sob o nº 11.316.256/0001-29, situada na Rua 85, nº 369, Quadra F19, Lote 45, Setor Sul, Goiânia/GO, CEP: 74080-010.</p>
+                <p style="font-size: 20px; text-align: justify; margin-bottom: 10px;"><strong>CONSIGNANTE:</strong> ${esc(cliente.nome)}, inscrito(a) no CPF/CNPJ sob o nº ${esc(cliente.cpf)}, telefone ${esc(cliente.telefone)}, e-mail ${esc(cliente.email)}.</p>
+                <p style="font-size: 20px; text-align: justify; margin-bottom: 0;">As partes acima qualificadas celebram, entre si, o presente instrumento particular, que será regido pela legislação aplicável, em especial, pelos artigos 534 e seguintes do Código Civil Brasileiro e pelas cláusulas e disposições seguintes:</p>
+            </div>
 
             <h3 style="font-size: 22px; margin-top: 20px;">CLÁUSULAS CONTRATUAIS RESUMIDAS</h3>
             <div style="font-size: 20px; text-align: justify; line-height: 1.6;">

@@ -1,0 +1,315 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gerenciar Administradores — Casas Goianita</title>
+    <!-- Firebase SDKs -->
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
+    <link rel="stylesheet" href="../css/style.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        .admin-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 10px;
+            padding: 18px 22px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 16px;
+            margin-bottom: 10px;
+            transition: border-color 0.2s;
+        }
+        .admin-card:hover { border-color: var(--accent-gold); }
+        .admin-card.inativo { opacity: 0.5; }
+        .admin-avatar {
+            width: 46px; height: 46px;
+            border-radius: 50%;
+            background: var(--accent-blue, #1a3c6e);
+            color: #fff;
+            display: flex; align-items: center; justify-content: center;
+            font-weight: 700; font-size: 18px;
+            flex-shrink: 0;
+        }
+        .admin-info { flex: 1; min-width: 0; }
+        .admin-nome { font-weight: 600; font-size: 15px; color: var(--text-main); }
+        .admin-email { font-size: 12px; color: var(--text-muted); margin-top: 2px; }
+        .admin-meta { font-size: 11px; color: var(--text-muted); margin-top: 4px; }
+        .admin-actions { display: flex; gap: 8px; flex-shrink: 0; }
+        .badge-ativo { background: #d4f0de; color: #145c28; padding: 3px 10px; border-radius: 10px; font-size: 11px; font-weight: 600; }
+        .badge-inativo { background: #f5e0e0; color: #8b0000; padding: 3px 10px; border-radius: 10px; font-size: 11px; font-weight: 600; }
+        .form-add { background: var(--bg-card); border: 2px dashed var(--border-color); border-radius: 10px; padding: 22px; margin-top: 24px; }
+        .form-add h3 { margin: 0 0 16px 0; font-size: 16px; color: var(--accent-gold); }
+        .form-row { display: grid; grid-template-columns: 1fr 1fr 160px; gap: 12px; }
+        @media (max-width: 700px) { .form-row { grid-template-columns: 1fr; } }
+        #msg-admins { margin-top: 12px; font-size: 13px; min-height: 20px; }
+        .msg-ok  { color: #1e7b3a; }
+        .msg-err { color: #c0392b; }
+    </style>
+</head>
+<body>
+    <div class="app-container">
+        <!-- Sidebar -->
+        <aside class="sidebar">
+            <div class="logo-container">
+                <img src="../logo.png" alt="Logo Goianita" />
+                <div>
+                    <span class="logo-text">Goianita Novo de novo</span>
+                    <span class="logo-sub">Consignações</span>
+                </div>
+            </div>
+            <nav>
+                <ul class="nav-menu">
+                    <li class="nav-item"><a href="../dashboard.html"><i class="fa-solid fa-chart-line"></i> Dashboard</a></li>
+                    <li class="nav-item"><a href="clientes.html"><i class="fa-solid fa-users"></i> Clientes / Fornecedores</a></li>
+                    <li class="nav-item"><a href="produtos.html"><i class="fa-solid fa-box-open"></i> Produtos Consignados</a></li>
+                    <li class="nav-item"><a href="financeiro.html"><i class="fa-solid fa-wallet"></i> Financeiro / Repasses</a></li>
+                    <li class="nav-item active"><a href="admins.html"><i class="fa-solid fa-user-shield"></i> Administradores</a></li>
+                    <li class="nav-item"><a href="regulamento.html"><i class="fa-solid fa-file-contract"></i> Regulamento</a></li>
+                </ul>
+            </nav>
+            <div class="sidebar-footer">
+                <div class="user-badge">
+                    <div class="user-avatar" id="sidebar-avatar">CL</div>
+                    <div class="user-info">
+                        <span class="user-name" id="sidebar-nome">Admin</span>
+                        <span class="user-role">Administrador</span>
+                    </div>
+                </div>
+                <a href="#" id="btn-logout" class="btn btn-secondary" style="width:100%;margin-top:16px;padding:8px;font-size:13px;color:#fff;border-color:rgba(255,255,255,0.2);background:rgba(255,255,255,0.08);display:flex;align-items:center;justify-content:center;gap:8px;">
+                    <i class="fa-solid fa-right-from-bracket"></i> Sair
+                </a>
+            </div>
+        </aside>
+
+        <!-- Main -->
+        <main class="main-content">
+            <header class="page-header">
+                <div>
+                    <h1 class="page-title"><i class="fa-solid fa-user-shield" style="color:var(--accent-gold);margin-right:10px;"></i>Gerenciar Administradores</h1>
+                    <p class="page-subtitle">Adicione, ative/desative ou remova administradores do sistema.</p>
+                </div>
+            </header>
+
+            <div class="content-area">
+
+                <!-- Lista de admins -->
+                <div class="card" style="margin-bottom:24px;">
+                    <div class="card-header" style="display:flex;align-items:center;justify-content:space-between;">
+                        <h3 class="card-title">Administradores Cadastrados</h3>
+                        <span id="total-admins" style="font-size:13px;color:var(--text-muted);">Carregando...</span>
+                    </div>
+                    <div id="lista-admins">
+                        <p style="color:var(--text-muted);text-align:center;padding:30px;">
+                            <i class="fa-solid fa-spinner fa-spin"></i> Carregando administradores...
+                        </p>
+                    </div>
+                </div>
+
+                <!-- Formulário de novo admin -->
+                <div class="form-add">
+                    <h3><i class="fa-solid fa-user-plus"></i> Adicionar Novo Administrador</h3>
+                    <form id="form-novo-admin">
+                        <div class="form-row">
+                            <div class="form-group" style="margin:0;">
+                                <label class="form-label">Nome completo</label>
+                                <input type="text" id="novo-nome" class="form-control" placeholder="Ex: Karinne Silva" required>
+                            </div>
+                            <div class="form-group" style="margin:0;">
+                                <label class="form-label">E-mail corporativo</label>
+                                <input type="email" id="novo-email" class="form-control" placeholder="nome@goianita.com.br" required>
+                            </div>
+                            <div class="form-group" style="margin:0;">
+                                <label class="form-label">Atalho de login</label>
+                                <input type="text" id="novo-atalho" class="form-control" placeholder="Ex: karinne" maxlength="20">
+                            </div>
+                        </div>
+                        <p style="font-size:12px;color:var(--text-muted);margin:10px 0 14px 0;">
+                            <i class="fa-solid fa-circle-info"></i>
+                            O novo administrador receberá um e-mail do Firebase para definir sua senha no primeiro acesso (use "Esqueci minha senha" na tela de login).
+                        </p>
+                        <button type="submit" id="btn-add-admin" class="btn btn-gold">
+                            <i class="fa-solid fa-plus"></i> Adicionar Administrador
+                        </button>
+                    </form>
+                    <div id="msg-admins"></div>
+                </div>
+
+            </div>
+        </main>
+    </div>
+
+    <script src="../js/db.js"></script>
+    <script>
+        // ── Guarda de acesso: somente admins ──
+        const role = sessionStorage.getItem('goianita_role');
+        if (role !== 'admin') { window.location.href = '../index.html'; }
+
+        const emailAdmin = sessionStorage.getItem('goianita_email') || '';
+        const initials = emailAdmin.substring(0, 2).toUpperCase();
+        document.getElementById('sidebar-avatar').textContent = initials;
+        document.getElementById('sidebar-nome').textContent = emailAdmin.split('@')[0];
+
+        document.getElementById('btn-logout').addEventListener('click', (e) => {
+            e.preventDefault();
+            sessionStorage.clear();
+            if (window.GoianitaAuth) window.GoianitaAuth.signOut().catch(() => {});
+            window.location.href = '../index.html';
+        });
+
+        // ── Helpers ──
+        function msg(txt, tipo) {
+            const el = document.getElementById('msg-admins');
+            el.className = tipo === 'ok' ? 'msg-ok' : 'msg-err';
+            el.textContent = txt;
+            if (tipo === 'ok') setTimeout(() => { el.textContent = ''; }, 4000);
+        }
+
+        function iniciais(nome) {
+            if (!nome) return '?';
+            const parts = nome.trim().split(' ').filter(Boolean);
+            return (parts[0][0] + (parts[1] ? parts[1][0] : '')).toUpperCase();
+        }
+
+        function formatDate(iso) {
+            if (!iso) return '—';
+            return new Date(iso).toLocaleDateString('pt-BR');
+        }
+
+        // ── Renderiza lista ──
+        function renderLista(admins) {
+            const lista = document.getElementById('lista-admins');
+            const total = document.getElementById('total-admins');
+            total.textContent = admins.length + ' administrador(es)';
+
+            if (admins.length === 0) {
+                lista.innerHTML = '<p style="color:var(--text-muted);text-align:center;padding:30px;">Nenhum administrador cadastrado.</p>';
+                return;
+            }
+
+            lista.innerHTML = admins.map(a => `
+                <div class="admin-card ${a.ativo === false ? 'inativo' : ''}" id="card-${a.id}">
+                    <div class="admin-avatar">${iniciais(a.nome)}</div>
+                    <div class="admin-info">
+                        <div class="admin-nome">${esc(a.nome)}</div>
+                        <div class="admin-email">${esc(a.email)}</div>
+                        <div class="admin-meta">
+                            ${a.atalho ? `Atalho: <strong>${esc(a.atalho)}</strong> &nbsp;|&nbsp;` : ''}
+                            Criado em: ${formatDate(a.criadoEm)}
+                        </div>
+                    </div>
+                    <div class="admin-actions">
+                        <span class="${a.ativo === false ? 'badge-inativo' : 'badge-ativo'}">${a.ativo === false ? 'Inativo' : 'Ativo'}</span>
+                        <button class="btn btn-secondary" style="padding:6px 12px;font-size:12px;" onclick="toggleAdmin('${a.id}', ${a.ativo !== false})">
+                            <i class="fa-solid fa-${a.ativo === false ? 'toggle-off' : 'toggle-on'}"></i>
+                            ${a.ativo === false ? 'Ativar' : 'Desativar'}
+                        </button>
+                        ${a.email !== emailAdmin ? `
+                        <button class="btn" style="padding:6px 12px;font-size:12px;background:#c0392b;color:#fff;border-color:#c0392b;" onclick="removerAdmin('${a.id}', '${esc(a.nome)}')">
+                            <i class="fa-solid fa-trash"></i>
+                        </button>` : '<span style="font-size:11px;color:var(--text-muted);">Você</span>'}
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function esc(v) {
+            return String(v || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+        }
+
+        // ── Toggle ativo/inativo ──
+        window.toggleAdmin = async function(id, atualAtivo) {
+            if (!window.GoianitaFirestore) { msg('Sem conexão com o banco de dados.', 'err'); return; }
+            try {
+                await window.GoianitaFirestore.collection('admins').doc(id).update({ ativo: !atualAtivo });
+                msg(atualAtivo ? 'Administrador desativado.' : 'Administrador ativado.', 'ok');
+            } catch(e) {
+                msg('Erro ao atualizar: ' + e.message, 'err');
+            }
+        };
+
+        // ── Remover ──
+        window.removerAdmin = async function(id, nome) {
+            if (!confirm(`Remover "${nome}" da lista de administradores?\n\nEle não conseguirá mais acessar o sistema.`)) return;
+            if (!window.GoianitaFirestore) { msg('Sem conexão com o banco de dados.', 'err'); return; }
+            try {
+                await window.GoianitaFirestore.collection('admins').doc(id).delete();
+                msg(`"${nome}" removido com sucesso.`, 'ok');
+            } catch(e) {
+                msg('Erro ao remover: ' + e.message, 'err');
+            }
+        };
+
+        // ── Adicionar ──
+        document.getElementById('form-novo-admin').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            if (!window.GoianitaFirestore) { msg('Sem conexão com o banco de dados.', 'err'); return; }
+
+            const nome    = document.getElementById('novo-nome').value.trim();
+            const email   = document.getElementById('novo-email').value.trim().toLowerCase();
+            const atalho  = document.getElementById('novo-atalho').value.trim().toLowerCase().replace(/\s+/g, '');
+            const btn     = document.getElementById('btn-add-admin');
+
+            btn.disabled = true;
+            btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Salvando...';
+
+            try {
+                // Verifica se já existe
+                const snap = await window.GoianitaFirestore.collection('admins').where('email', '==', email).get();
+                if (!snap.empty) {
+                    msg('Este e-mail já está cadastrado como administrador.', 'err');
+                    btn.disabled = false;
+                    btn.innerHTML = '<i class="fa-solid fa-plus"></i> Adicionar Administrador';
+                    return;
+                }
+
+                const novoAdmin = {
+                    nome, email, atalho: atalho || '',
+                    ativo: true,
+                    criadoEm: new Date().toISOString(),
+                    criadoPor: emailAdmin
+                };
+
+                await window.GoianitaFirestore.collection('admins').add(novoAdmin);
+
+                // Limpa o form
+                document.getElementById('novo-nome').value = '';
+                document.getElementById('novo-email').value = '';
+                document.getElementById('novo-atalho').value = '';
+                msg(`"${nome}" adicionado! Peça para ele usar "Esqueci minha senha" na tela de login para criar a senha.`, 'ok');
+            } catch(err) {
+                msg('Erro ao adicionar: ' + err.message, 'err');
+            }
+
+            btn.disabled = false;
+            btn.innerHTML = '<i class="fa-solid fa-plus"></i> Adicionar Administrador';
+        });
+
+        // ── Escuta em tempo real ──
+        function iniciarSync() {
+            if (!window.GoianitaFirestore) {
+                setTimeout(iniciarSync, 800);
+                return;
+            }
+            window.GoianitaFirestore.collection('admins').orderBy('criadoEm').onSnapshot(snap => {
+                const admins = [];
+                snap.forEach(doc => admins.push({ id: doc.id, ...doc.data() }));
+                renderLista(admins);
+            }, err => {
+                document.getElementById('lista-admins').innerHTML =
+                    `<p style="color:#c0392b;text-align:center;padding:24px;"><i class="fa-solid fa-triangle-exclamation"></i> Erro ao carregar: ${err.message}</p>`;
+            });
+        }
+
+        // Aguarda o Firebase inicializar antes de buscar
+        if (window.GoianitaAuth) {
+            window.GoianitaAuth.onAuthStateChanged(() => iniciarSync());
+        } else {
+            document.addEventListener('DOMContentLoaded', () => setTimeout(iniciarSync, 1200));
+        }
+    </script>
+</body>
+</html>
