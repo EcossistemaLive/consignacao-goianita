@@ -1356,13 +1356,13 @@ function imprimirContratoCliente() {
         <div class="print-header">
             <h2 style="text-align: center; margin-bottom: 20px;">CONTRATO DE CONSIGNAÇÃO DE PEÇAS E UTILIDADES</h2>
             
-            <h3 style="font-size: 20px; margin-top: 20px;">QUALIFICAÇÃO DAS PARTES</h3>
-            <p style="font-size: 17px; text-align: justify; margin-bottom: 10px;"><strong>CONSIGNATÁRIA:</strong> VIRTUAL DISTRIBUIDORA DE UTILIDADES DOMÉSTICAS LTDA (CASAS GOIANITA), sociedade limitada, inscrita no CNPJ sob o nº 11.316.256/0001-29, situada na Rua 85, nº 369, Quadra F19, Lote 45, Setor Sul, Goiânia/GO, CEP: 74080-010.</p>
-            <p style="font-size: 17px; text-align: justify; margin-bottom: 10px;"><strong>CONSIGNANTE:</strong> ${esc(cliente.nome)}, inscrito(a) no CPF/CNPJ sob o nº ${esc(cliente.cpf)}, telefone ${esc(cliente.telefone)}, e-mail ${esc(cliente.email)}.</p>
-            <p style="font-size: 17px; text-align: justify; margin-bottom: 20px;">As partes acima qualificadas celebram, entre si, o presente instrumento particular, que será regido pela legislação aplicável, em especial, pelos artigos 534 e seguintes do Código Civil Brasileiro e pelas cláusulas e disposições seguintes:</p>
+            <h3 style="font-size: 22px; margin-top: 20px;">QUALIFICAÇÃO DAS PARTES</h3>
+            <p style="font-size: 20px; text-align: justify; margin-bottom: 10px;"><strong>CONSIGNATÁRIA:</strong> VIRTUAL DISTRIBUIDORA DE UTILIDADES DOMÉSTICAS LTDA (CASAS GOIANITA), sociedade limitada, inscrita no CNPJ sob o nº 11.316.256/0001-29, situada na Rua 85, nº 369, Quadra F19, Lote 45, Setor Sul, Goiânia/GO, CEP: 74080-010.</p>
+            <p style="font-size: 20px; text-align: justify; margin-bottom: 10px;"><strong>CONSIGNANTE:</strong> ${esc(cliente.nome)}, inscrito(a) no CPF/CNPJ sob o nº ${esc(cliente.cpf)}, telefone ${esc(cliente.telefone)}, e-mail ${esc(cliente.email)}.</p>
+            <p style="font-size: 20px; text-align: justify; margin-bottom: 20px;">As partes acima qualificadas celebram, entre si, o presente instrumento particular, que será regido pela legislação aplicável, em especial, pelos artigos 534 e seguintes do Código Civil Brasileiro e pelas cláusulas e disposições seguintes:</p>
 
-            <h3 style="font-size: 20px; margin-top: 20px;">CLÁUSULAS CONTRATUAIS RESUMIDAS</h3>
-            <div style="font-size: 16px; text-align: justify; line-height: 1.55;">
+            <h3 style="font-size: 22px; margin-top: 20px;">CLÁUSULAS CONTRATUAIS RESUMIDAS</h3>
+            <div style="font-size: 20px; text-align: justify; line-height: 1.6;">
                 <p><strong>Cláusula 1ª</strong> – Considera-se CONSIGNANTE a pessoa que deixa bens sob os cuidados da CONSIGNATÁRIA para comercialização e repasse dos recursos líquidos.</p>
                 <p><em>Parágrafo Único.</em> O(A) CONSIGNANTE autoriza o uso de imagens dos bens para fins de divulgação e publicidade.</p>
                 <p><strong>Cláusula 2ª</strong> – O(A) CONSIGNANTE responsabiliza-se pela origem e autenticidade dos bens móveis deixados em consignação.</p>
@@ -1385,7 +1385,7 @@ function imprimirContratoCliente() {
         <br><hr>
         <div class="print-body" style="page-break-before: always;">
             <h3 style="text-align: center; margin-bottom: 20px;">ANEXO I - TERMO DE TRIAGEM E PRODUTOS ACEITOS</h3>
-            <p style="font-size: 17px; margin-bottom: 20px;">O(A) CONSIGNANTE declara ciência e concorda com a avaliação, precificação, estado de conservação, defeitos apontados e lista de acessórios descritos nos itens abaixo, submetidos e aprovados pela triagem da CONSIGNATÁRIA na presente data:</p>
+            <p style="font-size: 20px; margin-bottom: 20px;">O(A) CONSIGNANTE declara ciência e concorda com a avaliação, precificação, estado de conservação, defeitos apontados e lista de acessórios descritos nos itens abaixo, submetidos e aprovados pela triagem da CONSIGNATÁRIA na presente data:</p>
     `;
     
     produtos.forEach(p => {
@@ -1397,24 +1397,24 @@ function imprimirContratoCliente() {
                 grouped[item.category].push(item.label);
             });
             for(const cat in grouped) {
-                checklistHtml += `<p style="margin: 8px 0 2px 0; font-size: 11px; font-weight: bold; color: #444;">${esc(cat)}</p>`;
-                checklistHtml += `<ul style="list-style: none; padding-left: 0; margin: 0; font-size: 10px;">`;
+                checklistHtml += `<p style="margin: 8px 0 2px 0; font-size: 18px; font-weight: bold; color: #222;">${esc(cat)}</p>`;
+                checklistHtml += `<ul style="list-style: none; padding-left: 0; margin: 0; font-size: 16px;">`;
                 grouped[cat].forEach(label => {
-                    checklistHtml += `<li><i class="fa-solid fa-check" style="color: #666; margin-right: 4px;"></i> ${esc(label)}</li>`;
+                    checklistHtml += `<li><i class="fa-solid fa-check" style="color: #1a3c6e; margin-right: 6px;"></i> ${esc(label)}</li>`;
                 });
                 checklistHtml += `</ul>`;
             }
         } else {
-            checklistHtml = '<p style="font-size: 11px; font-style: italic; color: #999;">Checklist não preenchido.</p>';
+            checklistHtml = '<p style="font-size: 16px; font-style: italic; color: #777;">Checklist não preenchido.</p>';
         }
 
         html += `
-            <div style="margin-bottom: 15px; padding: 10px; border: 1px solid #ccc; border-radius: 5px;">
-                <h4 style="margin: 0 0 10px 0; font-size: 18px;">[${esc(p.sku)}] ${esc(p.nome)} - Valor Líquido de Repasse: R$ ${(p.precoVenda * (1 - p.comissao/100)).toFixed(2)}</h4>
-                <div style="column-count: 2; column-gap: 20px;">
+            <div style="margin-bottom: 20px; padding: 14px 16px; border: 2px solid #1a3c6e; border-radius: 7px;">
+                <h4 style="margin: 0 0 12px 0; font-size: 20px; color: #1a3c6e;">[${esc(p.sku)}] ${esc(p.nome)} &mdash; Valor Líquido de Repasse: R$ ${(p.precoVenda * (1 - p.comissao/100)).toFixed(2)}</h4>
+                <div style="column-count: 2; column-gap: 24px;">
                     ${checklistHtml}
                 </div>
-                <p style="margin-top: 8px; font-size: 11px; color: #333;"><strong>Ressalvas/Faltantes:</strong> ${esc(p.defeitosAparentes || 'Nenhuma ressalva.')} ${esc(p.pecasFaltantes || '')}</p>
+                <p style="margin-top: 12px; font-size: 16px; color: #222;"><strong>Ressalvas/Faltantes:</strong> ${esc(p.defeitosAparentes || 'Nenhuma ressalva.')} ${esc(p.pecasFaltantes || '')}</p>
             </div>
         `;
     });
@@ -1422,18 +1422,18 @@ function imprimirContratoCliente() {
     html += `
         </div>
         <div class="print-footer" style="margin-top: 50px;">
-            <p style="text-align: center; font-size: 17px;">Por estarem justos e contratados, assinam o presente termo de consignação e avaliação.</p>
-            <p style="text-align: center; font-size: 17px; margin-top: 10px;">Goiânia/GO, ${new Date().toLocaleDateString('pt-BR')}</p>
+            <p style="text-align: center; font-size: 20px;">Por estarem justos e contratados, assinam o presente termo de consignação e avaliação.</p>
+            <p style="text-align: center; font-size: 20px; margin-top: 10px;">Goiânia/GO, ${new Date().toLocaleDateString('pt-BR')}</p>
             <div style="display: flex; justify-content: space-around; margin-top: 60px;">
                 <div style="text-align: center;">
                     <p>_______________________________________________________</p>
                     <p><strong>${esc(cliente.nome)}</strong></p>
-                    <p style="font-size: 16px;">CONSIGNANTE (CPF/CNPJ: ${esc(cliente.cpf)})</p>
+                    <p style="font-size: 18px;">CONSIGNANTE (CPF/CNPJ: ${esc(cliente.cpf)})</p>
                 </div>
                 <div style="text-align: center;">
                     <p>_______________________________________________________</p>
                     <p><strong>Casas Goianita (Virtual Ltda)</strong></p>
-                    <p style="font-size: 16px;">CONSIGNATÁRIA</p>
+                    <p style="font-size: 18px;">CONSIGNATÁRIA</p>
                 </div>
             </div>
         </div>
