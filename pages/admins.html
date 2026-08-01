@@ -186,7 +186,21 @@
             total.textContent = admins.length + ' administrador(es)';
 
             if (admins.length === 0) {
-                lista.innerHTML = '<p style="color:var(--text-muted);text-align:center;padding:30px;">Nenhum administrador cadastrado.</p>';
+                lista.innerHTML = `
+                    <div style="text-align:center;padding:30px 20px;">
+                        <i class="fa-solid fa-circle-exclamation" style="font-size:32px;color:var(--accent-gold);margin-bottom:12px;display:block;"></i>
+                        <p style="color:var(--text-muted);margin-bottom:16px;">Nenhum administrador no banco de dados ainda.</p>
+                        <p style="font-size:13px;color:var(--text-muted);margin-bottom:20px;">
+                            Os admins existentes (<strong>admin, debora, karinne, elber, goianita, eduard</strong>) estão cadastrados apenas no código.<br>
+                            Clique abaixo para importá-los para o banco de dados.
+                        </p>
+                        <button id="btn-migrar" class="btn btn-gold" style="padding:12px 24px;font-size:15px;">
+                            <i class="fa-solid fa-cloud-arrow-up"></i> Importar Administradores Existentes
+                        </button>
+                        <div id="msg-migracao" style="margin-top:12px;font-size:13px;"></div>
+                    </div>
+                `;
+                document.getElementById('btn-migrar').addEventListener('click', migrarAdmins);
                 return;
             }
 
@@ -218,6 +232,50 @@
 
         function esc(v) {
             return String(v || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+        }
+
+        // ── Admins hardcoded (migração inicial) ──
+        const ADMINS_SEED = [
+            { email: 'admin@goianita.com.br',   nome: 'Admin Goianita',    atalho: 'admin'    },
+            { email: 'debora@goianita.com.br',  nome: 'Débora',            atalho: 'debora'   },
+            { email: 'eduardfreitasg@gmail.com',nome: 'Eduard Freitas',    atalho: 'eduard'   },
+            { email: 'goianita@terra.com.br',   nome: 'Goianita Terra',    atalho: 'goianita' },
+            { email: 'karinne@goianita.com.br', nome: 'Karinne',           atalho: 'karinne'  },
+            { email: 'elber@goianita.com.br',   nome: 'Elber',             atalho: 'elber'    }
+        ];
+
+        async function migrarAdmins() {
+            const btn = document.getElementById('btn-migrar');
+            const msgEl = document.getElementById('msg-migracao');
+            if (!window.GoianitaFirestore) { msgEl.style.color='#c0392b'; msgEl.textContent = 'Sem conexão com o banco de dados.'; return; }
+
+            btn.disabled = true;
+            btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Importando...';
+            msgEl.textContent = '';
+
+            let ok = 0, erros = 0;
+            for (const a of ADMINS_SEED) {
+                try {
+                    // Só adiciona se ainda não existir
+                    const snap = await window.GoianitaFirestore.collection('admins').where('email', '==', a.email).get();
+                    if (snap.empty) {
+                        await window.GoianitaFirestore.collection('admins').add({
+                            ...a,
+                            ativo: true,
+                            criadoEm: new Date().toISOString(),
+                            criadoPor: 'migracao-automatica'
+                        });
+                    }
+                    ok++;
+                } catch(e) { erros++; }
+            }
+
+            msgEl.style.color = erros === 0 ? '#1e7b3a' : '#c0392b';
+            msgEl.textContent = erros === 0
+                ? `${ok} administrador(es) importado(s) com sucesso!`
+                : `${ok} importado(s), ${erros} erro(s). Tente novamente.`;
+            btn.disabled = false;
+            btn.innerHTML = '<i class="fa-solid fa-cloud-arrow-up"></i> Importar Administradores Existentes';
         }
 
         // ── Toggle ativo/inativo ──
