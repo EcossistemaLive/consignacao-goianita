@@ -809,7 +809,17 @@ const db = {
          * os duplicados (local e no Firestore). Não apaga produtos nem pagamentos.
          * Retorna true se consolidou algo. Seguro para rodar múltiplas vezes.
          */
-        dedupeClientesByCpf: () => {
+        /**
+         * IMPORTANTE (2026-07-31): esta rotina NÃO apaga mais nada da nuvem por conta própria.
+         * Antes ela rodava a cada carregamento de página e, ao eleger o cadastro "mais antigo"
+         * como verdadeiro, marcava os outros IDs como excluídos (com data de agora) e os
+         * DELETAVA do Firestore. Como cada aparelho tem uma base local diferente, um deles
+         * podia apagar da nuvem o fornecedor recém-cadastrado em outro — o cadastro sumia para
+         * os demais admins. Agora ela só consolida os dados LOCALMENTE e religa os produtos.
+         * A remoção na nuvem só acontece se for pedida de propósito: `{ apagarNaNuvem: true }`.
+         */
+        dedupeClientesByCpf: (opts) => {
+            const apagarNaNuvem = !!(opts && opts.apagarNaNuvem);
             const norm = (s) => (s ? String(s).replace(/\D/g, '') : '');
             const clientes = db.clientes.getAll();
 
@@ -849,8 +859,9 @@ const db = {
 
             if (idsRemovidos.length === 0) return false;
 
-            // Marca os duplicados removidos como tombstone para não voltarem pelo sync.
-            idsRemovidos.forEach(rid => addTombstone('clientes', rid));
+            // Só marca exclusão quando a remoção na nuvem foi pedida de propósito. Marcar aqui
+            // automaticamente era o que fazia um aparelho apagar da nuvem o cadastro do outro.
+            if (apagarNaNuvem) idsRemovidos.forEach(rid => addTombstone('clientes', rid));
 
             // Reescreve a lista de clientes sem duplicatas.
             localStorage.setItem(DB_KEYS.CLIENTES, JSON.stringify([...canonicais, ...semCpf]));
@@ -868,11 +879,14 @@ const db = {
                 localStorage.setItem(DB_KEYS.PRODUTOS, JSON.stringify(produtos));
             }
 
-            // Propaga a limpeza para o Firestore, se disponível.
+            // Propaga para o Firestore. A EXCLUSÃO só ocorre se pedida de propósito; o religamento
+            // dos produtos ao fornecedor correto sempre é propagado (não destrói nada).
             if (typeof firebase !== 'undefined' && window.GoianitaFirestore) {
-                idsRemovidos.forEach(id => {
-                    window.GoianitaFirestore.collection('clientes').doc(id).delete().catch(() => {});
-                });
+                if (apagarNaNuvem) {
+                    idsRemovidos.forEach(id => {
+                        window.GoianitaFirestore.collection('clientes').doc(id).delete().catch(() => {});
+                    });
+                }
                 produtosRemapeados.forEach(p => {
                     window.GoianitaFirestore.collection('produtos').doc(p.id).set({ clienteId: p.clienteId }, { merge: true }).catch(() => {});
                 });
@@ -1213,9 +1227,11 @@ window.goianitaForcarSync = async () => {
     }
 };
 
-// Ao carregar, consolida fornecedores duplicados por CPF já existentes na base local
-// (cura dados antigos criados antes do ID determinístico). Seguro rodar sempre.
-try { db.utils.dedupeClientesByCpf(); } catch (e) { console.warn('[Dedupe] falhou ao iniciar:', e); }
+// A consolidação de duplicados NÃO roda mais automaticamente ao carregar a página.
+// Motivo: ela elege o cadastro mais antigo como verdadeiro a partir da base LOCAL, que é
+// diferente em cada aparelho — e assim um aparelho descartava o fornecedor recém-cadastrado
+// em outro, fazendo o cadastro sumir para os demais admins. Continua disponível para uso
+// deliberado: window.GoianitaDB.utils.dedupeClientesByCpf({ apagarNaNuvem: true }).
 
 /**
  * Motor de sincronização automática: percorre a fila de reenvio e sobe para o Firestore

@@ -114,6 +114,20 @@
         const idsCliLocal = new Set(r.local.clientes.map(c => c.id));
         r.orfaos = r.local.produtos.filter(p => !idsCliLocal.has(p.clienteId));
 
+        // 7. Exclusões guardadas neste aparelho: se um ID daqui for recadastrado em outra
+        // máquina, este aparelho pode apagá-lo da nuvem. É a causa clássica de "cadastrei e
+        // sumiu para os outros".
+        r.exclusoes = (typeof getTombstones === 'function' ? (getTombstones() || {}) : {});
+
+        // 8. CPFs repetidos na base local (a consolidação automática usava isso para descartar cadastros)
+        const porCpf = {};
+        r.local.clientes.forEach(c => {
+            const k = String(c.cpf || '').replace(/\D/g, '');
+            if (!k) return;
+            (porCpf[k] = porCpf[k] || []).push(c);
+        });
+        r.duplicados = Object.keys(porCpf).filter(k => porCpf[k].length > 1).map(k => porCpf[k]);
+
         desenhar(r);
     }
 
@@ -165,6 +179,26 @@
             h += '</ul></div>';
         }
 
+        const exCli = (r.exclusoes && r.exclusoes.clientes) || [];
+        if (exCli.length > 0) {
+            h += '<div class="diag-card"><h3>6. Exclusões de fornecedores guardadas neste aparelho</h3><p style="font-size:14px;color:#666;margin-top:0;">Se um destes cadastros for refeito em outra máquina, este aparelho podia apagá-lo da nuvem — é a causa clássica de "cadastrei e não aparece para os outros":</p><ul class="lista">';
+            exCli.forEach(x => {
+                const eid = (typeof x === 'string') ? x : (x && x.id);
+                const em = (x && typeof x === 'object' && x.em) ? x.em : 'SEM DATA (formato antigo)';
+                h += '<li><span class="cod">' + esc(eid) + '</span> — excluído em: ' + esc(em) + '</li>';
+            });
+            h += '</ul></div>';
+        }
+
+        if (r.duplicados && r.duplicados.length > 0) {
+            h += '<div class="diag-card"><h3>7. CPFs repetidos nesta base local</h3><p style="font-size:14px;color:#666;margin-top:0;">Cadastros com o mesmo CPF e IDs diferentes — era isso que a consolidação automática usava para descartar um deles:</p><ul class="lista">';
+            r.duplicados.forEach(grupo => {
+                h += '<li><b>' + esc(grupo[0].nome) + '</b> (CPF ' + esc(grupo[0].cpf) + '): ' +
+                     grupo.map(c => '<span class="cod">' + esc(c.id) + '</span>').join(' + ') + '</li>';
+            });
+            h += '</ul></div>';
+        }
+
         // Conclusão
         let txt = '', cls = 'bom';
         if (!r.sdk) { txt = 'A biblioteca do Firebase não carregou nesta página. O sistema está funcionando só com dados locais.'; cls = 'erro'; }
@@ -173,6 +207,7 @@
         else if (r.escrita === false && String(r.erroEscrita).indexOf('permission') !== -1) { txt = 'CAUSA ENCONTRADA: a nuvem está RECUSANDO a gravação (' + esc(r.erroEscrita) + '). As regras de segurança do Firestore precisam ser liberadas para usuários autenticados. Me mande esta tela que eu passo a regra exata.'; cls = 'erro'; }
         else if (r.leitura === false && String(r.erroLeitura).indexOf('permission') !== -1) { txt = 'CAUSA ENCONTRADA: a nuvem está RECUSANDO a leitura (' + esc(r.erroLeitura) + '). É regra de segurança do Firestore. Me mande esta tela que eu passo a regra exata.'; cls = 'erro'; }
         else if (r.escrita === false || r.leitura === false) { txt = 'Houve falha de comunicação com a nuvem. Leitura: ' + (r.leitura ? 'ok' : esc(r.erroLeitura)) + ' / Gravação: ' + (r.escrita ? 'ok' : esc(r.erroEscrita)) + '. Me mande esta tela.'; cls = 'erro'; }
+        else if (r.soLocal.length > 0 && r.soLocal.some(c => exCli.some(x => ((typeof x === 'string') ? x : (x && x.id)) === c.id))) { txt = 'CAUSA CONFIRMADA: há fornecedor que não subiu para a nuvem e cujo ID consta na lista de exclusões deste aparelho (seção 6). Ou seja: o cadastro estava sendo apagado da nuvem por causa de uma exclusão antiga do mesmo CPF. A versão atual do sistema já não faz mais isso — deixe esta página aberta 1 minuto e recarregue.'; cls = 'erro'; }
         else if (r.soLocal.length > 0) { txt = 'Leitura e gravação funcionam, mas ' + r.soLocal.length + ' fornecedor(es) ainda não subiram. Deixe esta página aberta por 1 minuto: a sincronização automática deve enviá-los. Se continuarem aqui, me mande esta tela.'; cls = 'erro'; }
         else if (r.orfaos.length > 0) { txt = 'A nuvem está OK. Porém há ' + r.orfaos.length + ' produto(s) apontando para um fornecedor inexistente — é isso que faz produtos "desaparecerem" da ficha. Me mande esta tela para eu religar esses produtos ao fornecedor certo.'; cls = 'erro'; }
         else { txt = 'Tudo certo neste aparelho: autenticado, lendo e gravando na nuvem, sem pendências e sem produtos órfãos.'; cls = 'bom'; }
