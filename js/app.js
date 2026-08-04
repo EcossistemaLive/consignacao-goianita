@@ -33,9 +33,13 @@ const GoianitaSessaoPronta = (function () {
             if (window.GoianitaAuth.currentUser) return resolve(window.GoianitaAuth.currentUser);
             let resolvido = false;
             const fim = (u) => { if (!resolvido) { resolvido = true; resolve(u); } };
-            try { window.GoianitaAuth.onAuthStateChanged(u => { if (u) fim(u); }); } catch (e) {}
-            // A restauração da sessão é assíncrona; damos tempo antes de concluir que não há ninguém.
-            setTimeout(() => fim((window.GoianitaAuth && window.GoianitaAuth.currentUser) || null), 8000);
+            // O Firebase dispara onAuthStateChanged UMA vez logo após restaurar a sessão salva,
+            // com o usuário ou com null. Resolver nessa primeira chamada é o correto: é rápido e
+            // não chuta ninguém para fora por lentidão — no celular a restauração passava dos 8s
+            // do timeout anterior e o admin era mandado de volta ao login como "sessão expirada".
+            try { window.GoianitaAuth.onAuthStateChanged(u => fim(u || null)); } catch (e) {}
+            // Rede muito ruim / SDK que nunca responde: só então desistimos.
+            setTimeout(() => fim((window.GoianitaAuth && window.GoianitaAuth.currentUser) || null), 15000);
         });
     }
 
@@ -52,13 +56,30 @@ const GoianitaSessaoPronta = (function () {
             return GoianitaSessao;
         }
 
+        // O papel escolhido no login manda. Isso é essencial para quem tem OS DOIS acessos
+        // (ex.: Débora, que é admin e também fornecedora): ao entrar pelo CPF, a sessão do
+        // Firebase pode continuar sendo a da conta de admin dela (não expira), e derivar o
+        // papel só da conta faria o acesso de fornecedora dela nunca funcionar.
+        const papelEscolhido = sessionStorage.getItem('goianita_role');
+        const idFornecedor = sessionStorage.getItem('goianita_cliente_id');
+        const ehAcessoFornecedor = (papelEscolhido === 'user' && !!idFornecedor);
+
         if (!user) {
             // Fornecedor: o login por CPF é validado no próprio cadastro e a sessão anônima é
             // só um extra para puxar dados. Se o acesso anônimo estiver desabilitado no Firebase,
-            // exigir usuário aqui criaria um LOOP entre login e tela do fornecedor. Então ele
-            // entra (a visão dele é apenas dos próprios dados) com o aviso de nuvem na tela.
-            if (sessionStorage.getItem('goianita_role') === 'user' && sessionStorage.getItem('goianita_cliente_id')) {
+            // exigir usuário aqui criaria um LOOP entre login e tela do fornecedor.
+            if (ehAcessoFornecedor) {
                 GoianitaSessao.role = 'user';
+                GoianitaSessao.nuvem = 'indisponivel';
+                return GoianitaSessao;
+            }
+            // TRAVA ANTI-LOOP: se a pessoa acabou de entrar com sucesso e ainda assim não há
+            // sessão restaurada (celular em navegação privada, armazenamento bloqueado), mandar
+            // de volta ao login criaria um vai-e-vem infinito. Deixa entrar avisando na tela.
+            const t = parseInt(sessionStorage.getItem('goianita_login_ok') || '0', 10);
+            if (t && (Date.now() - t) < 120000) {
+                GoianitaSessao.role = papelEscolhido || 'admin';
+                GoianitaSessao.email = sessionStorage.getItem('goianita_email') || '';
                 GoianitaSessao.nuvem = 'indisponivel';
                 return GoianitaSessao;
             }
@@ -71,23 +92,24 @@ const GoianitaSessaoPronta = (function () {
         GoianitaSessao.user = user;
         GoianitaSessao.nuvem = 'ok';
 
-        if (user.isAnonymous) {
-            // Fornecedor (login por CPF usa sessão anônima). Precisa saber de qual cadastro se trata.
-            const cid = sessionStorage.getItem('goianita_cliente_id');
-            if (!cid) {
-                sessionStorage.setItem('goianita_aviso_login', 'Entre novamente com seu CPF para acessar seus dados.');
-                window.location.replace(paraLogin());
-                return GoianitaSessao;
-            }
+        if (ehAcessoFornecedor) {
+            // Entrou como fornecedor: mantém esse papel mesmo que a conta autenticada seja de admin.
             GoianitaSessao.role = 'user';
-            sessionStorage.setItem('goianita_role', 'user');
-        } else {
-            GoianitaSessao.role = 'admin';
-            GoianitaSessao.email = user.email || '';
-            sessionStorage.setItem('goianita_role', 'admin');
-            if (user.email) sessionStorage.setItem('goianita_email', user.email);
-            sessionStorage.removeItem('goianita_cliente_id');
+            return GoianitaSessao;
         }
+
+        if (user.isAnonymous) {
+            // Sessão anônima sem cadastro escolhido: não há como saber de quem são os dados.
+            sessionStorage.setItem('goianita_aviso_login', 'Entre novamente com seu CPF para acessar seus dados.');
+            window.location.replace(paraLogin());
+            return GoianitaSessao;
+        }
+
+        GoianitaSessao.role = 'admin';
+        GoianitaSessao.email = user.email || '';
+        sessionStorage.setItem('goianita_role', 'admin');
+        if (user.email) sessionStorage.setItem('goianita_email', user.email);
+        sessionStorage.removeItem('goianita_cliente_id');
         return GoianitaSessao;
     })();
 })();
@@ -178,6 +200,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Nada é renderizado antes de sabermos QUEM está acessando de verdade.
     await GoianitaSessaoPronta;
     initSeloNuvem();
+    initMenuAdministradores();
+    atualizarCacheAdmins(); // mantém o espelho local da lista de admins (usado no login)
 
     // Configura o Usuário Logado Mock
     initUserSession();
@@ -289,6 +313,227 @@ function renderActivePage() {
         renderProdutoDetalhe();
     } else if (pageName === 'financeiro.html') {
         renderFinanceiro();
+    } else if (pageName === 'administradores.html') {
+        renderAdministradores();
+    }
+}
+
+/**
+ * ─────────────────────────────────────────────────────────────────────────────
+ * ADMINISTRADORES — lista compartilhada na nuvem (coleção `admins` do Firestore)
+ * ─────────────────────────────────────────────────────────────────────────────
+ * Assim um admin inclui outro pela interface, sem depender de alterar o código.
+ * A lista é espelhada em localStorage porque a TELA DE LOGIN precisa dela ANTES de
+ * qualquer autenticação — e uma leitura sem usuário autenticado pode ser recusada pelas
+ * regras do Firestore. Com o espelho, o aparelho já conhece a lista atualizada.
+ */
+const GOIANITA_ADMINS_CACHE = 'goianita_admins_cache';
+
+function idDocAdmin(email) {
+    return String(email || '').trim().toLowerCase().replace(/[^a-z0-9]+/g, '_');
+}
+
+async function lerAdminsNuvem() {
+    if (!window.GoianitaFirestore) throw new Error('sem conexão com a nuvem');
+    // Lê TODOS os documentos e filtra aqui. A consulta antiga (`where ativo != false`)
+    // deixava de fora justamente os registros sem o campo `ativo` preenchido.
+    const snap = await window.GoianitaFirestore.collection('admins').get();
+    return snap.docs.map(d => Object.assign({ _id: d.id }, d.data()));
+}
+
+function salvarCacheAdmins(lista) {
+    try {
+        const enxuta = (lista || []).map(a => ({ email: a.email, atalho: a.atalho || '', ativo: a.ativo !== false }));
+        localStorage.setItem(GOIANITA_ADMINS_CACHE, JSON.stringify(enxuta));
+    } catch (e) { /* cota cheia: ignora */ }
+}
+
+// Roda em segundo plano nas telas de admin, para manter o espelho local atualizado.
+async function atualizarCacheAdmins() {
+    try {
+        if (!window.GoianitaSessao || window.GoianitaSessao.role !== 'admin') return;
+        salvarCacheAdmins(await lerAdminsNuvem());
+    } catch (e) { /* silencioso: é só manutenção de cache */ }
+}
+
+// Acrescenta o item "Administradores" ao menu de todas as telas (só para admin),
+// evitando editar o menu de cada página HTML uma por uma.
+function initMenuAdministradores() {
+    if (!window.GoianitaSessao || window.GoianitaSessao.role !== 'admin') return;
+    const menu = document.querySelector('.nav-menu');
+    if (!menu || document.getElementById('nav-administradores')) return;
+    const emPages = window.location.pathname.indexOf('/pages/') !== -1;
+    const li = document.createElement('li');
+    li.className = 'nav-item';
+    li.id = 'nav-administradores';
+    li.innerHTML = '<a href="' + (emPages ? 'administradores.html' : 'pages/administradores.html') + '">' +
+        '<i class="fa-solid fa-user-shield"></i> Administradores</a>';
+    menu.appendChild(li);
+    if ((window.location.pathname.split('/').pop() || '') === 'administradores.html') {
+        li.classList.add('active');
+    }
+}
+
+function avisoAdmin(msg, tipo) {
+    const el = document.getElementById('admin-aviso');
+    if (!el) return;
+    const cores = {
+        erro:  ['#fdecea', '#b3261e'],
+        ok:    ['#e8f5ec', '#1b7f3b'],
+        alerta:['#fff4e5', '#8a5300']
+    }[tipo || 'alerta'];
+    el.style.background = cores[0];
+    el.style.color = cores[1];
+    el.style.borderLeft = '4px solid ' + cores[1];
+    el.innerHTML = msg;
+    el.style.display = 'block';
+}
+
+window.abrirFormAdmin = function(email) {
+    const box = document.getElementById('admin-form-box');
+    if (!box) return;
+    const lista = window.GoianitaAdminsCarregados || [];
+    const alvo = email ? lista.find(a => String(a.email).toLowerCase() === String(email).toLowerCase()) : null;
+
+    document.getElementById('admin-form-titulo').textContent = alvo ? 'Editar Administrador' : 'Incluir Administrador';
+    document.getElementById('adm-id-original').value = alvo ? alvo.email : '';
+    document.getElementById('adm-nome').value = alvo ? (alvo.nome || '') : '';
+    document.getElementById('adm-email').value = alvo ? (alvo.email || '') : '';
+    document.getElementById('adm-atalho').value = alvo ? (alvo.atalho || '') : '';
+    document.getElementById('adm-ativo').value = (alvo && alvo.ativo === false) ? 'false' : 'true';
+    box.style.display = 'block';
+    document.getElementById('adm-nome').focus();
+};
+
+window.fecharFormAdmin = function() {
+    const box = document.getElementById('admin-form-box');
+    if (box) box.style.display = 'none';
+};
+
+window.alternarAdminAtivo = async function(email, ativar) {
+    if (!confirm(ativar
+        ? 'Reativar o acesso de ' + email + '?'
+        : 'Bloquear o acesso de ' + email + '?\n\nEle deixa de ser reconhecido como administrador.')) return;
+    try {
+        await window.GoianitaFirestore.collection('admins').doc(idDocAdmin(email)).set({
+            email: String(email).toLowerCase(),
+            ativo: !!ativar,
+            atualizadoEm: new Date().toISOString()
+        }, { merge: true });
+        avisoAdmin('Situação atualizada.', 'ok');
+        renderAdministradores(true);
+    } catch (e) {
+        avisoAdmin('Não foi possível salvar: ' + esc(e && (e.code || e.message)), 'erro');
+    }
+};
+
+// Evita releitura desnecessária: esta tela é redesenhada a cada evento de sincronização
+// (clientes/produtos/pagamentos), que nada tem a ver com a lista de administradores.
+let goianitaAdminsUltimaLeitura = 0;
+
+async function renderAdministradores(forcar) {
+    const corpo = document.getElementById('admins-table-body');
+    if (!corpo) return;
+
+    const agora = Date.now();
+    const jaDesenhado = !!window.GoianitaAdminsCarregados;
+    if (!forcar && jaDesenhado && (agora - goianitaAdminsUltimaLeitura) < 15000) return;
+    goianitaAdminsUltimaLeitura = agora;
+
+    // Lista base que vive no código (garante que nunca ficamos sem nenhum acesso).
+    const FIXOS = [
+        { nome: 'Administrador', email: 'admin@goianita.com.br', atalho: 'admin' },
+        { nome: 'Adriano Estevão', email: 'adrianogoianita@gmail.com', atalho: 'adriano' },
+        { nome: 'Débora', email: 'debora@goianita.com.br', atalho: 'debora' },
+        { nome: 'Eduardo', email: 'eduardfreitasg@gmail.com', atalho: 'eduard' },
+        { nome: 'Goianita', email: 'goianita@terra.com.br', atalho: 'goianita' },
+        { nome: 'Karinne', email: 'karinne@goianita.com.br', atalho: 'karinne' },
+        { nome: 'Elber', email: 'elber@goianita.com.br', atalho: 'elber' }
+    ];
+
+    let daNuvem = [];
+    let erroNuvem = null;
+    try {
+        daNuvem = await lerAdminsNuvem();
+        salvarCacheAdmins(daNuvem);
+    } catch (e) {
+        erroNuvem = (e && (e.code || e.message)) || 'falha desconhecida';
+    }
+
+    // Junta: o registro da nuvem prevalece sobre o fixo (permite editar nome/atalho/situação).
+    const porEmail = {};
+    FIXOS.forEach(a => { porEmail[a.email.toLowerCase()] = Object.assign({ ativo: true, fixo: true }, a); });
+    daNuvem.forEach(a => {
+        if (!a.email) return;
+        const k = String(a.email).toLowerCase();
+        porEmail[k] = Object.assign({}, porEmail[k] || {}, a, { ativo: a.ativo !== false, email: k });
+    });
+    const lista = Object.values(porEmail).sort((x, y) => String(x.nome || x.email).localeCompare(String(y.nome || y.email)));
+    window.GoianitaAdminsCarregados = lista;
+
+    if (erroNuvem) {
+        avisoAdmin('Não foi possível ler a lista na nuvem (<span class="cod">' + esc(erroNuvem) + '</span>). ' +
+            'Mostrando apenas a lista base do sistema. Inclusões feitas agora podem não salvar.', 'erro');
+    }
+
+    corpo.innerHTML = lista.map(a => {
+        const ativo = a.ativo !== false;
+        return '<tr>' +
+            '<td><strong>' + esc(a.nome || '—') + '</strong></td>' +
+            '<td>' + esc(a.email) + '</td>' +
+            '<td>' + (a.atalho ? esc(a.atalho) : '<span style="color:var(--text-muted);">—</span>') + '</td>' +
+            '<td>' + (ativo
+                ? '<span class="badge badge-pago">Ativo</span>'
+                : '<span class="badge badge-devolvido">Inativo</span>') + '</td>' +
+            '<td style="display:flex; gap:8px; flex-wrap:wrap;">' +
+                '<button class="btn btn-secondary" style="padding:6px 12px; font-size:12px;" onclick="abrirFormAdmin(\'' + esc(a.email) + '\')">Editar</button>' +
+                '<button class="btn btn-secondary" style="padding:6px 12px; font-size:12px;" onclick="alternarAdminAtivo(\'' + esc(a.email) + '\', ' + (ativo ? 'false' : 'true') + ')">' +
+                    (ativo ? 'Bloquear' : 'Reativar') + '</button>' +
+            '</td>' +
+        '</tr>';
+    }).join('');
+
+    const form = document.getElementById('admin-form');
+    if (form && !form.dataset.bound) {
+        form.dataset.bound = '1';
+        form.addEventListener('submit', async (ev) => {
+            ev.preventDefault();
+            const email = document.getElementById('adm-email').value.trim().toLowerCase();
+            const nome = document.getElementById('adm-nome').value.trim();
+            const atalho = document.getElementById('adm-atalho').value.trim().toLowerCase().replace(/\s+/g, '');
+            const ativo = document.getElementById('adm-ativo').value === 'true';
+            const original = document.getElementById('adm-id-original').value.trim().toLowerCase();
+
+            if (!email || email.indexOf('@') === -1) { alert('Informe um e-mail válido.'); return; }
+            if (atalho && /\d/.test(atalho) === false && atalho.indexOf('@') !== -1) { alert('O atalho não deve conter "@".'); return; }
+            if (atalho && /^[\d.\-\/\s]+$/.test(atalho)) { alert('O atalho não pode ser só números — isso seria confundido com o CPF de um fornecedor.'); return; }
+
+            const conflito = (window.GoianitaAdminsCarregados || []).find(a =>
+                a.atalho && atalho && a.atalho.toLowerCase() === atalho && String(a.email).toLowerCase() !== email);
+            if (conflito) { alert('O atalho "' + atalho + '" já é usado por ' + conflito.email + '.'); return; }
+
+            try {
+                await window.GoianitaFirestore.collection('admins').doc(idDocAdmin(email)).set({
+                    nome: nome, email: email, atalho: atalho, ativo: ativo,
+                    atualizadoEm: new Date().toISOString()
+                }, { merge: true });
+
+                // Trocou o e-mail ao editar: desativa o registro antigo para não sobrar acesso.
+                if (original && original !== email) {
+                    await window.GoianitaFirestore.collection('admins').doc(idDocAdmin(original)).set({
+                        email: original, ativo: false, atualizadoEm: new Date().toISOString()
+                    }, { merge: true });
+                }
+
+                fecharFormAdmin();
+                avisoAdmin('Administrador salvo. Ele já pode entrar digitando <strong>' +
+                    esc(atalho || email) + '</strong> e criar a senha no primeiro acesso.', 'ok');
+                renderAdministradores(true);
+            } catch (e) {
+                avisoAdmin('Não foi possível salvar na nuvem: <span class="cod">' +
+                    esc(e && (e.code || e.message)) + '</span>', 'erro');
+            }
+        });
     }
 }
 

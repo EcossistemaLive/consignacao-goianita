@@ -1,0 +1,37 @@
+// ─────────────────────────────────────────────────────────────────────────────
+// REGRAS DE SEGURANÇA DO FIRESTORE — Casas Goianita (app de consignação)
+//
+// Onde aplicar: console.firebase.google.com → projeto app-brecho-fd94a →
+// Firestore Database → aba "Regras" → colar este conteúdo → Publicar.
+// (Regras NÃO sobem pelo git/GitHub Pages: são publicadas no console.)
+//
+// Esta versão MANTÉM a regra que já existia no projeto (tudo exige usuário
+// autenticado) e apenas ACRESCENTA a exceção da coleção `admins`. Optou-se por
+// não listar coleção por coleção justamente para não correr o risco de esquecer
+// alguma e quebrá-la silenciosamente.
+// ─────────────────────────────────────────────────────────────────────────────
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ── Lista de administradores ───────────────────────────────────────────
+    // LEITURA LIBERADA de propósito: a tela de login precisa saber quem é
+    // administrador ANTES de qualquer autenticação. É o que permite a um admin
+    // recém-incluído entrar num aparelho novo e criar sua senha no primeiro acesso.
+    // Exposição: apenas nome, e-mail de acesso, atalho e situação.
+    // NUNCA guarde telefone, CPF, senha ou dado sensível nesta coleção.
+    // ESCRITA continua exigindo login — ninguém de fora inclui administrador.
+    match /admins/{doc} {
+      allow read: if true;
+      allow write: if request.auth != null;
+    }
+
+    // ── Todo o resto (clientes, produtos, pagamentos, _diagnostico...) ─────
+    // Regra que já vigorava no projeto: exige usuário autenticado — administrador
+    // (e-mail/senha) ou fornecedor (sessão anônima criada no login por CPF).
+    match /{document=**} {
+      allow read, write: if request.auth != null;
+    }
+  }
+}

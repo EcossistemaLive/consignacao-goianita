@@ -219,6 +219,7 @@
         // ─────────────────────────────────────────────
         const ADMINS_AUTORIZADOS = [
             'admin@goianita.com.br',
+            'adrianogoianita@gmail.com',
             'debora@goianita.com.br',
             'eduardfreitasg@gmail.com',
             'goianita@terra.com.br',
@@ -229,6 +230,9 @@
         // Atalhos de digitação → e-mail completo
         const ATALHOS_ADMIN = {
             'admin':    'admin@goianita.com.br',
+            // Atenção: o e-mail do Adriano é gmail, NÃO segue o domínio da empresa. Sem este
+            // atalho, "adriano" seria completado para adriano@goianita.com.br (conta inexistente).
+            'adriano':  'adrianogoianita@gmail.com',
             'debora':   'debora@goianita.com.br',
             'eduard':   'eduardfreitasg@gmail.com',
             'goianita': 'goianita@terra.com.br',
@@ -239,16 +243,42 @@
         // Cache dos admins carregados do Firestore (complementa a lista hardcoded)
         let adminsFirestore = [];
         let atalhosFirestore = {};
+        // Aplica uma lista de admins (venha da nuvem ou do espelho local) nas variáveis usadas
+        // pelo login. Registros inativos são ignorados de propósito.
+        function aplicarListaAdmins(lista) {
+            (lista || []).forEach(a => {
+                if (!a || !a.email || a.ativo === false) return;
+                const email = String(a.email).toLowerCase();
+                if (!adminsFirestore.includes(email)) adminsFirestore.push(email);
+                if (a.atalho) atalhosFirestore[String(a.atalho).toLowerCase()] = email;
+            });
+        }
+
+        // 1) Espelho local: já vale de imediato, mesmo sem internet e antes de qualquer leitura.
+        //    É o que garante que um admin recém-incluído seja reconhecido nesta tela, já que a
+        //    leitura da nuvem AQUI acontece sem usuário autenticado e pode ser recusada.
+        try { aplicarListaAdmins(JSON.parse(localStorage.getItem('goianita_admins_cache') || '[]')); } catch (e) {}
+
+        // 2) Tentativa de atualizar direto da nuvem (funciona se as regras permitirem leitura
+        //    da coleção `admins` sem login). Falhando, seguimos com o espelho + lista base.
+        let tentativasAdmins = 0;
         function carregarAdminsFirestore() {
-            if (!window.GoianitaFirestore) { setTimeout(carregarAdminsFirestore, 800); return; }
-            window.GoianitaFirestore.collection('admins').where('ativo', '!=', false).get()
+            if (!window.GoianitaFirestore) {
+                if (++tentativasAdmins <= 8) setTimeout(carregarAdminsFirestore, 800);
+                return;
+            }
+            window.GoianitaFirestore.collection('admins').get()
                 .then(snap => {
-                    snap.forEach(doc => {
-                        const a = doc.data();
-                        if (a.email && !adminsFirestore.includes(a.email)) adminsFirestore.push(a.email);
-                        if (a.atalho && a.email) atalhosFirestore[a.atalho] = a.email;
-                    });
-                }).catch(() => {});
+                    const lista = [];
+                    snap.forEach(doc => lista.push(doc.data()));
+                    aplicarListaAdmins(lista);
+                    try { localStorage.setItem('goianita_admins_cache', JSON.stringify(
+                        lista.filter(a => a && a.email).map(a => ({ email: String(a.email).toLowerCase(), atalho: a.atalho || '', ativo: a.ativo !== false }))
+                    )); } catch (e) {}
+                })
+                .catch(err => {
+                    console.warn('[Admins] Não foi possível ler a lista da nuvem nesta tela:', err && (err.code || err.message));
+                });
         }
         carregarAdminsFirestore();
 
@@ -432,8 +462,20 @@
             const btn  = document.getElementById('btn-login');
 
             const lowerUser  = user.toLowerCase();
-            const isAdmin    = lowerUser.includes('@') || Object.keys(ATALHOS_ADMIN).includes(lowerUser) || Object.keys(atalhosFirestore).includes(lowerUser);
-            const adminEmail = resolverAtalho(lowerUser);
+
+            // Quem é fornecedor digita CPF/CNPJ (só números e pontuação). Qualquer coisa com
+            // letras é acesso de administrador. Antes, um admin cujo atalho não estava na lista
+            // (ex.: "adriano") caía no caminho do CPF e recebia a mensagem errada — pior no
+            // celular, porque a lista de atalhos vem do Firestore de forma assíncrona e pode
+            // nem chegar. Agora o login não depende mais dessa lista carregar.
+            const digitos = lowerUser.replace(/\D/g, '');
+            const ehDocumento = digitos.length > 0 && /^[\d.\-\/\s]+$/.test(lowerUser);
+            const isAdmin = !ehDocumento;
+
+            // Atalho conhecido vira e-mail; sem "@", completa com o domínio padrão da empresa.
+            // Assim um administrador novo entra digitando apenas o primeiro nome.
+            let adminEmail = resolverAtalho(lowerUser);
+            if (isAdmin && adminEmail.indexOf('@') === -1) adminEmail = adminEmail + '@goianita.com.br';
 
             if (isAdmin) {
                 // Sem Firebase não há como entrar como administrador. O antigo "modo offline"
@@ -452,6 +494,9 @@
                         sessionStorage.setItem('goianita_role', 'admin');
                         sessionStorage.setItem('goianita_email', adminEmail);
                         sessionStorage.removeItem('goianita_cliente_id');
+                        // Marca que a autenticação deu certo agora: evita que um celular que não
+                        // consegue guardar a sessão fique num vai-e-vem infinito com o login.
+                        sessionStorage.setItem('goianita_login_ok', String(Date.now()));
                         window.location.href = 'dashboard.html';
                     })
                     .catch(err => {
@@ -517,6 +562,7 @@
                     sessionStorage.setItem('goianita_cliente_id', cli.id);
                     sessionStorage.setItem('goianita_user_name', cli.nome || '');
                     sessionStorage.setItem('goianita_email', emailCpf);
+                    sessionStorage.setItem('goianita_login_ok', String(Date.now()));
                     window.location.href = 'pages/cliente-detalhe.html?id=' + cli.id;
                 } catch (err) {
                     alert('Erro ao entrar: ' + (err.message || err));
