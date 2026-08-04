@@ -92,6 +92,7 @@
 
             <!-- ===== FORMULÁRIO DE LOGIN ===== -->
             <div id="section-login">
+                <div id="aviso-sessao" style="display:none; background:#fff4e5; color:#8a5300; border-left:4px solid #b26a00; padding:10px 12px; border-radius:6px; font-size:13px; margin-bottom:14px; line-height:1.4;"></div>
                 <form class="login-form" id="login-form">
                     <div class="form-group">
                         <label class="form-label" for="username" style="color: #e6e1da;">CPF (Cliente) ou E-mail (Admin)</label>
@@ -411,6 +412,16 @@
         });
 
 
+        // Mostra o motivo pelo qual a pessoa foi devolvida ao login (sessão expirada etc.),
+        // em vez de simplesmente jogá-la de volta sem explicação.
+        (function mostrarAvisoSessao() {
+            const msg = sessionStorage.getItem('goianita_aviso_login');
+            if (!msg) return;
+            sessionStorage.removeItem('goianita_aviso_login');
+            const el = document.getElementById('aviso-sessao');
+            if (el) { el.textContent = msg; el.style.display = 'block'; }
+        })();
+
         // ─────────────────────────────────────────────
         // LOGIN NORMAL
         // ─────────────────────────────────────────────
@@ -425,16 +436,11 @@
             const adminEmail = resolverAtalho(lowerUser);
 
             if (isAdmin) {
-                // Modo offline
+                // Sem Firebase não há como entrar como administrador. O antigo "modo offline"
+                // (senha fixa) liberava o sistema sem autenticar: a máquina ficava fora da
+                // sincronização e os cadastros feitos ali não chegavam aos outros usuários.
                 if (typeof firebase === 'undefined' || !window.GoianitaAuth) {
-                    if (pass === 'goianita123') {
-                        sessionStorage.setItem('goianita_role', 'admin');
-                        sessionStorage.setItem('goianita_email', adminEmail);
-                        sessionStorage.removeItem('goianita_cliente_id');
-                        window.location.href = 'dashboard.html';
-                    } else {
-                        alert('Senha incorreta (modo offline).');
-                    }
+                    alert('Sem conexão com o servidor de autenticação.\n\nO acesso de administrador exige conexão, para garantir que tudo o que você cadastrar seja salvo na nuvem e apareça para os outros usuários.\n\nVerifique a internet e tente novamente.');
                     return;
                 }
 

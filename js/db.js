@@ -27,6 +27,15 @@ if (typeof firebase !== 'undefined') {
         firebase.initializeApp(firebaseConfig);
     }
     window.GoianitaAuth = firebase.auth();
+
+    // A sessão precisa SOBREVIVER ao fechamento do navegador. Sem isso o admin voltava sem
+    // usuário autenticado, a sincronização não iniciava e aquela máquina virava uma ilha:
+    // ele cadastrava normalmente e ninguém mais via os dados.
+    try {
+        window.GoianitaAuth.setPersistence(firebase.auth.Auth.Persistence.LOCAL)
+            .catch(e => console.warn('[Auth] Falha ao fixar persistência da sessão:', e && e.code));
+    } catch (e) { /* SDK antigo: segue com o padrão */ }
+
     window.GoianitaFirestore = firebase.firestore();
     window.GoianitaStorage = firebase.storage();
 

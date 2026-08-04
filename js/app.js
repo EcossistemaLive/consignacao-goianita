@@ -3,7 +3,182 @@
  * Casas Goianita - Sistema de Comodato e Consignação
  */
 
-document.addEventListener('DOMContentLoaded', () => {
+/**
+ * ─────────────────────────────────────────────────────────────────────────────
+ * GUARDA DE ACESSO (resolve o problema crônico de "cadastrei e o outro não vê")
+ * ─────────────────────────────────────────────────────────────────────────────
+ * Antes, as telas internas não verificavam autenticação: se a sessão do navegador
+ * estivesse vazia, o app assumia "admin" e funcionava só com os dados locais. Sem
+ * usuário autenticado no Firebase a sincronização NUNCA inicia, então a máquina virava
+ * uma ilha — o admin cadastrava e ninguém mais via, sem qualquer aviso.
+ *
+ * Agora: quem manda é a sessão do Firebase. Sem usuário autenticado, volta ao login.
+ * Se a nuvem estiver fora do ar, o acesso é permitido MAS com aviso permanente na tela,
+ * para ninguém trabalhar acreditando que está sincronizado.
+ *
+ * Este arquivo é carregado por todas as telas internas (e não pelo index.html), então
+ * nenhuma página pode ficar sem proteção por esquecimento.
+ */
+const GoianitaSessao = { user: null, role: null, email: '', nuvem: 'verificando' };
+window.GoianitaSessao = GoianitaSessao;
+
+const GoianitaSessaoPronta = (function () {
+    const arquivo = (window.location.pathname.split('/').pop() || 'index.html').toLowerCase();
+    const ehLogin = (arquivo === '' || arquivo === 'index.html');
+    const paraLogin = () => (window.location.pathname.indexOf('/pages/') !== -1 ? '../index.html' : 'index.html');
+
+    function esperarUsuario() {
+        return new Promise(resolve => {
+            if (typeof firebase === 'undefined' || !window.GoianitaAuth) return resolve(undefined);
+            if (window.GoianitaAuth.currentUser) return resolve(window.GoianitaAuth.currentUser);
+            let resolvido = false;
+            const fim = (u) => { if (!resolvido) { resolvido = true; resolve(u); } };
+            try { window.GoianitaAuth.onAuthStateChanged(u => { if (u) fim(u); }); } catch (e) {}
+            // A restauração da sessão é assíncrona; damos tempo antes de concluir que não há ninguém.
+            setTimeout(() => fim((window.GoianitaAuth && window.GoianitaAuth.currentUser) || null), 8000);
+        });
+    }
+
+    return (async function () {
+        if (ehLogin) { GoianitaSessao.nuvem = 'login'; return GoianitaSessao; }
+
+        const user = await esperarUsuario();
+
+        // Firebase indisponível (sem internet / bloqueio de rede): deixa trabalhar, mas avisando.
+        if (typeof user === 'undefined') {
+            GoianitaSessao.nuvem = 'indisponivel';
+            GoianitaSessao.role = sessionStorage.getItem('goianita_role') || '';
+            GoianitaSessao.email = sessionStorage.getItem('goianita_email') || '';
+            return GoianitaSessao;
+        }
+
+        if (!user) {
+            // Fornecedor: o login por CPF é validado no próprio cadastro e a sessão anônima é
+            // só um extra para puxar dados. Se o acesso anônimo estiver desabilitado no Firebase,
+            // exigir usuário aqui criaria um LOOP entre login e tela do fornecedor. Então ele
+            // entra (a visão dele é apenas dos próprios dados) com o aviso de nuvem na tela.
+            if (sessionStorage.getItem('goianita_role') === 'user' && sessionStorage.getItem('goianita_cliente_id')) {
+                GoianitaSessao.role = 'user';
+                GoianitaSessao.nuvem = 'indisponivel';
+                return GoianitaSessao;
+            }
+            // Admin sem sessão: nunca mais liberar como "admin" silenciosamente.
+            sessionStorage.setItem('goianita_aviso_login', 'Sua sessão expirou. Entre novamente para que seus cadastros sejam salvos na nuvem e apareçam para os outros usuários.');
+            window.location.replace(paraLogin());
+            return GoianitaSessao;
+        }
+
+        GoianitaSessao.user = user;
+        GoianitaSessao.nuvem = 'ok';
+
+        if (user.isAnonymous) {
+            // Fornecedor (login por CPF usa sessão anônima). Precisa saber de qual cadastro se trata.
+            const cid = sessionStorage.getItem('goianita_cliente_id');
+            if (!cid) {
+                sessionStorage.setItem('goianita_aviso_login', 'Entre novamente com seu CPF para acessar seus dados.');
+                window.location.replace(paraLogin());
+                return GoianitaSessao;
+            }
+            GoianitaSessao.role = 'user';
+            sessionStorage.setItem('goianita_role', 'user');
+        } else {
+            GoianitaSessao.role = 'admin';
+            GoianitaSessao.email = user.email || '';
+            sessionStorage.setItem('goianita_role', 'admin');
+            if (user.email) sessionStorage.setItem('goianita_email', user.email);
+            sessionStorage.removeItem('goianita_cliente_id');
+        }
+        return GoianitaSessao;
+    })();
+})();
+window.GoianitaSessaoPronta = GoianitaSessaoPronta;
+
+/**
+ * ORDEM DOS PRODUTOS — uma única regra usada por TODAS as listas e documentos.
+ * Fica centralizado de propósito: se cada tela ordenasse do seu jeito, dois usuários veriam
+ * a mesma lista em ordens diferentes. O critério é a data de cadastro (mais antigo primeiro),
+ * com desempate pelo SKU/ID para o resultado ser idêntico em qualquer aparelho.
+ */
+function goianitaDataCadastroProduto(p) {
+    const d = p && (p.dataEntrada || p.dataCadastro || p.atualizadoEm);
+    const t = d ? new Date(d).getTime() : NaN;
+    return isNaN(t) ? Infinity : t; // sem data válida vai para o fim, nunca embaralha
+}
+function ordenarPorCadastro(lista) {
+    return (lista || []).slice().sort((a, b) => {
+        const da = goianitaDataCadastroProduto(a);
+        const dbb = goianitaDataCadastroProduto(b);
+        if (da !== dbb) return da - dbb;
+        return String(a.sku || a.id || '').localeCompare(String(b.sku || b.id || ''));
+    });
+}
+window.GoianitaOrdenarPorCadastro = ordenarPorCadastro;
+
+/**
+ * Produtos que devem entrar num documento: SOMENTE os marcados na tabela da ficha do
+ * fornecedor, na ordem de cadastro. Antes, os .docx ignoravam a marcação e traziam tudo.
+ * Retorna também se existiam caixas de seleção na tela, para dar a mensagem certa.
+ */
+function produtosParaDocumento(clienteId) {
+    const todos = ordenarPorCadastro(window.GoianitaDB.produtos.getByCliente(clienteId));
+    const caixas = document.querySelectorAll('.contrato-check');
+    if (!caixas || caixas.length === 0) {
+        // Documento gerado de uma tela sem a tabela de seleção: usa todos, em ordem.
+        return { produtos: todos, tinhaSelecao: false };
+    }
+    const marcados = Array.from(document.querySelectorAll('.contrato-check:checked')).map(cb => String(cb.value));
+    return { produtos: todos.filter(p => marcados.includes(String(p.id))), tinhaSelecao: true };
+}
+
+/**
+ * Selo permanente de estado da nuvem. Existe para que nenhum admin volte a trabalhar sem
+ * perceber que está desconectado (era exatamente assim que os cadastros se perdiam).
+ */
+function initSeloNuvem() {
+    if (document.getElementById('goianita-selo-nuvem')) return;
+    const selo = document.createElement('div');
+    selo.id = 'goianita-selo-nuvem';
+    selo.style.cssText = 'position:fixed;right:14px;bottom:14px;z-index:9999;font:600 12px/1.3 system-ui,sans-serif;' +
+        'padding:8px 12px;border-radius:20px;box-shadow:0 2px 10px rgba(0,0,0,.18);cursor:default;max-width:280px;';
+    document.body.appendChild(selo);
+
+    const pintar = () => {
+        const pend = (typeof pendingSyncTotal === 'function') ? pendingSyncTotal() : 0;
+        const autenticado = !!(window.GoianitaAuth && window.GoianitaAuth.currentUser);
+        let cor, fundo, txt;
+
+        if (!navigator.onLine || GoianitaSessao.nuvem === 'indisponivel') {
+            fundo = '#fdecea'; cor = '#b3261e';
+            txt = 'SEM CONEXÃO — o que for cadastrado agora só aparecerá para os outros quando a internet voltar';
+        } else if (!autenticado) {
+            fundo = '#fdecea'; cor = '#b3261e';
+            txt = 'NÃO CONECTADO À NUVEM — entre novamente no sistema';
+        } else if (pend > 0) {
+            fundo = '#fff4e5'; cor = '#8a5300';
+            txt = 'Enviando ' + pend + ' registro(s) para a nuvem...';
+        } else {
+            fundo = '#e8f5ec'; cor = '#1b7f3b';
+            txt = 'Sincronizado com a nuvem';
+        }
+        selo.style.background = fundo;
+        selo.style.color = cor;
+        selo.textContent = txt;
+    };
+
+    pintar();
+    setInterval(pintar, 4000);
+    window.addEventListener('online', pintar);
+    window.addEventListener('offline', pintar);
+    if (window.GoianitaAuth && window.GoianitaAuth.onAuthStateChanged) {
+        window.GoianitaAuth.onAuthStateChanged(pintar);
+    }
+}
+
+document.addEventListener('DOMContentLoaded', async () => {
+    // Nada é renderizado antes de sabermos QUEM está acessando de verdade.
+    await GoianitaSessaoPronta;
+    initSeloNuvem();
+
     // Configura o Usuário Logado Mock
     initUserSession();
 
@@ -19,8 +194,11 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 function initUserSession() {
-    const role = sessionStorage.getItem('goianita_role') || 'admin';
-    const email = sessionStorage.getItem('goianita_email') || '';
+    // NUNCA assumir 'admin' quando a sessão está vazia: era isso que liberava a tela sem
+    // autenticação no Firebase e deixava a máquina fora da sincronização, sem ninguém notar.
+    // O papel vem da sessão real validada pela guarda de acesso.
+    const role = (window.GoianitaSessao && window.GoianitaSessao.role) || sessionStorage.getItem('goianita_role') || '';
+    const email = (window.GoianitaSessao && window.GoianitaSessao.email) || sessionStorage.getItem('goianita_email') || '';
     const userName = sessionStorage.getItem('goianita_user_name') || '';
 
     let name = "Cléber";
@@ -481,7 +659,8 @@ function renderClienteDetalhe() {
     // Listar produtos do cliente
     const prodTable = document.getElementById('cli-produtos-table');
     if (prodTable) {
-        const produtos = window.GoianitaDB.produtos.getByCliente(id);
+        // Ordem de cadastro: é esta a ordem que os documentos vão seguir.
+        const produtos = ordenarPorCadastro(window.GoianitaDB.produtos.getByCliente(id));
         window.toggleTodosContrato = function(el) {
             document.querySelectorAll('.contrato-check').forEach(cb => {
                 if(!cb.disabled) cb.checked = el.checked;
@@ -540,8 +719,8 @@ function renderProdutosList() {
     const produtos = window.GoianitaDB.produtos.getAll();
     
     function drawTable(list) {
-        // Ordena por SKU ou ID para garantir estabilidade do HTML (evita piscar o hover)
-        list.sort((a, b) => (a.sku || a.id).localeCompare(b.sku || b.id));
+        // Ordem de cadastro (mais antigo primeiro), igual para todos os usuários.
+        list = ordenarPorCadastro(list);
         renderTabela(tableBody, list.map(p => {
             const cliente = window.GoianitaDB.clientes.getById(p.clienteId) || { nome: 'Desconhecido' };
             const valorCliente = p.precoVenda - (p.precoVenda * p.comissao / 100);
@@ -1260,10 +1439,14 @@ function imprimirAvaliacoesCliente() {
     if (!id) return;
     
     const cliente = window.GoianitaDB.clientes.getById(id);
-    const produtos = window.GoianitaDB.produtos.getByCliente(id);
-    
+    // Somente os produtos marcados, na ordem de cadastro.
+    const sel = produtosParaDocumento(id);
+    const produtos = sel.produtos;
+
     if (!produtos || produtos.length === 0) {
-        alert("Nenhum produto cadastrado para este fornecedor.");
+        alert(sel.tinhaSelecao
+            ? "Nenhum produto selecionado. Marque na tabela os produtos que devem entrar no documento."
+            : "Nenhum produto cadastrado para este fornecedor.");
         return;
     }
     
@@ -1338,12 +1521,10 @@ function imprimirContratoCliente() {
     if (!id) return;
     
     const cliente = window.GoianitaDB.clientes.getById(id);
-    const todosProdutos = window.GoianitaDB.produtos.getByCliente(id);
-    
-    // Obter apenas produtos selecionados
-    const checkedBoxes = Array.from(document.querySelectorAll('.contrato-check:checked')).map(cb => cb.value);
-    const produtos = todosProdutos.filter(p => checkedBoxes.includes(p.id.toString()));
-    
+
+    // Apenas os produtos marcados, na mesma ordem de cadastro dos demais documentos.
+    const produtos = produtosParaDocumento(id).produtos;
+
     if (!produtos || produtos.length === 0) {
         alert("Nenhum produto selecionado. Por favor, marque os produtos que entrarão no contrato.");
         return;
@@ -1490,8 +1671,16 @@ window.gerarNotaEntrada = async function() {
     const id = new URLSearchParams(window.location.search).get('id');
     const cliente = window.GoianitaDB.clientes.getById(id);
     if (!cliente) { alert('Fornecedor não encontrado.'); return; }
-    const produtos = window.GoianitaDB.produtos.getByCliente(id);
-    if (produtos.length === 0 && !confirm('Este fornecedor não tem produtos cadastrados. Gerar a Nota mesmo assim (sem itens)?')) return;
+    // SOMENTE os produtos marcados na tabela, na ordem de cadastro.
+    const sel = produtosParaDocumento(id);
+    const produtos = sel.produtos;
+    if (produtos.length === 0) {
+        if (sel.tinhaSelecao) {
+            alert('Nenhum produto selecionado. Marque na tabela os produtos que devem entrar na Nota de Entrada.');
+            return;
+        }
+        if (!confirm('Este fornecedor não tem produtos cadastrados. Gerar a Nota mesmo assim (sem itens)?')) return;
+    }
 
     const { Document, Paragraph, TextRun, Table, TableRow, TableCell, WidthType, AlignmentType, TableLayoutType, PageOrientation } = D;
     const P = (children, opts) => new Paragraph(Object.assign({ children }, opts || {}));
@@ -1555,9 +1744,38 @@ window.gerarReciboDevolucao = async function() {
     if (!cliente) { alert('Fornecedor não encontrado.'); return; }
     const hoje = new Date();
 
-    const { Document, Paragraph, TextRun, AlignmentType } = D;
+    // SOMENTE os produtos marcados — o recibo precisa dizer QUAIS mercadorias voltaram.
+    const sel = produtosParaDocumento(id);
+    const devolvidos = sel.produtos;
+    if (devolvidos.length === 0 && sel.tinhaSelecao) {
+        alert('Nenhum produto selecionado. Marque na tabela as mercadorias que estão sendo devolvidas.');
+        return;
+    }
+
+    const { Document, Paragraph, TextRun, Table, TableRow, TableCell, WidthType, AlignmentType, TableLayoutType } = D;
     const P = (children, opts) => new Paragraph(Object.assign({ children }, opts || {}));
     const T = (text, opts) => new TextRun(Object.assign({ text: String(text == null ? '' : text) }, opts || {}));
+    const cel = (txt, o) => { o = o || {}; return new TableCell({ width: { size: o.w || 2000, type: WidthType.DXA }, margins: { top: 40, bottom: 40, left: 60, right: 60 }, children: [ new Paragraph({ alignment: o.align || AlignmentType.LEFT, children: [ new TextRun({ text: String(txt == null ? '' : txt), bold: !!o.bold, size: o.size || 18 }) ] }) ] }); };
+
+    // Larguras fixas (twips) para o Word não encolher as colunas e quebrar letra por letra.
+    const colWD = [700, 4200, 2200, 2000];
+    const rowsDev = [ new TableRow({ tableHeader: true, children:
+        ['Item', 'Mercadoria', 'Estado', 'Valor (R$)'].map((c, i) => cel(c, { bold: true, align: AlignmentType.CENTER, w: colWD[i] })) }) ];
+    devolvidos.forEach((p, i) => {
+        rowsDev.push(new TableRow({ children: [
+            cel(i + 1, { align: AlignmentType.CENTER, w: colWD[0] }),
+            cel(p.nome || '', { w: colWD[1] }),
+            cel(p.conservacao || '', { w: colWD[2] }),
+            cel(fmtMoedaDoc(p.precoVenda), { align: AlignmentType.RIGHT, w: colWD[3] })
+        ] }));
+    });
+
+    const blocoItens = devolvidos.length > 0
+        ? [ P([ T('MERCADORIAS DEVOLVIDAS', { bold: true, size: 20 }) ]),
+            P([ T('') ]),
+            new Table({ columnWidths: colWD, layout: TableLayoutType.FIXED, width: { size: 9100, type: WidthType.DXA }, rows: rowsDev }),
+            P([ T('') ]) ]
+        : [];
 
     const doc = new Document({ sections: [{ children: [
         P([ T('CASA GOIANITA', { bold: true, size: 28 }) ], { alignment: AlignmentType.CENTER }),
@@ -1567,6 +1785,7 @@ window.gerarReciboDevolucao = async function() {
         P([ T('Recebemos de C.G. (Casa Goianita) a(s) mercadoria(s) devolvida(s) por ter ocorrido o prazo de 180 dias sem a venda da(s) mesma(s).', { size: 20 }) ]),
         P([ T('Declaro que me foram entregues nas mesmas condições de uso constantes da Nota de Entrada de Mercadorias Semi-Novas Nº ' + numeroNota(cliente) + ', pelo que dou plena e geral quitação.', { size: 20 }) ]),
         P([ T('') ]),
+        ...blocoItens,
         P([ T('Goiânia, ' + String(hoje.getDate()).padStart(2, '0') + ' de ' + GOIANITA_MESES[hoje.getMonth()] + ' de ' + hoje.getFullYear() + '.', { size: 20 }) ]),
         P([ T('') ]), P([ T('') ]), P([ T('') ]),
         P([ T(cliente.nome || '', { bold: true }) ], { alignment: AlignmentType.CENTER }),
