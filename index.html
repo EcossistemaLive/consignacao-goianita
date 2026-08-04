@@ -285,6 +285,32 @@
         function isAdminAutorizado(email) {
             return ADMINS_AUTORIZADOS.includes(email) || adminsFirestore.includes(email);
         }
+
+        /**
+         * Confere na NUVEM, no momento do login, se o e-mail segue autorizado como admin.
+         * Necessário porque autenticar (o Firebase reconhecer a senha) é diferente de estar
+         * autorizado: sem esta verificação, quem já tivesse conta continuava entrando mesmo
+         * depois de ser bloqueado na tela Administradores — o bloqueio não valia nada.
+         * O registro da nuvem tem a palavra final, inclusive para bloquear alguém da lista base.
+         */
+        async function adminSegueAutorizado(email) {
+            email = String(email || '').toLowerCase();
+            try {
+                if (window.GoianitaFirestore) {
+                    const snap = await window.GoianitaFirestore.collection('admins').get();
+                    let registro = null;
+                    snap.forEach(d => {
+                        const a = d.data();
+                        if (a && String(a.email || '').toLowerCase() === email) registro = a;
+                    });
+                    if (registro) return registro.ativo !== false;
+                }
+            } catch (e) {
+                console.warn('[Admins] Não foi possível confirmar a autorização na nuvem:', e && (e.code || e.message));
+            }
+            // Sem registro na nuvem: vale a lista base do código (rede de segurança).
+            return isAdminAutorizado(email);
+        }
         function resolverAtalho(user) {
             return ATALHOS_ADMIN[user] || atalhosFirestore[user] || user;
         }
@@ -490,7 +516,15 @@
                 btn.textContent = 'Autenticando...';
 
                 window.GoianitaAuth.signInWithEmailAndPassword(adminEmail, pass)
-                    .then(() => {
+                    .then(async () => {
+                        // Senha correta não basta: o acesso precisa continuar autorizado.
+                        if (!(await adminSegueAutorizado(adminEmail))) {
+                            try { await window.GoianitaAuth.signOut(); } catch (e) {}
+                            alert('Seu acesso de administrador está bloqueado.\n\nProcure outro administrador para reativá-lo na tela "Administradores".');
+                            btn.disabled = false;
+                            btn.textContent = 'Entrar no Sistema';
+                            return;
+                        }
                         sessionStorage.setItem('goianita_role', 'admin');
                         sessionStorage.setItem('goianita_email', adminEmail);
                         sessionStorage.removeItem('goianita_cliente_id');
