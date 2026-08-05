@@ -87,10 +87,14 @@
                 <form id="produto-form" class="form-grid">
                     <!-- Fornecedor -->
                     <div class="form-group">
-                        <label class="form-label" for="prod-cliente">Fornecedor / Cliente Proprietário *</label>
+                        <label class="form-label" for="prod-cliente-busca">Fornecedor / Cliente Proprietário *</label>
+                        <input type="text" id="prod-cliente-busca" class="form-control" autocomplete="off"
+                               placeholder="Pesquisar por nome, CPF ou código (ex: Carlos, 002451, 014)"
+                               style="width: 100%; margin-bottom: 8px;">
                         <select id="prod-cliente" class="filter-select" style="width: 100%;" required>
                             <!-- Populado por db.js/app.js -->
                         </select>
+                        <small id="prod-cliente-info" style="color: var(--text-muted); font-size: 12px;"></small>
                     </div>
                     
                     <!-- Status Inicial -->

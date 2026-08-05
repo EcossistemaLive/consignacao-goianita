@@ -224,28 +224,45 @@ function setupFirestoreSync() {
             window.GoianitaFirestore.collection('clientes').onSnapshot(snapshot => {
                 const tomb = tombstonesDe('clientes');
                 const firebaseClientes = [];
+                const idsNaNuvemClientes = new Set(); // tudo que a nuvem conhece, inclusive excluídos
                 snapshot.forEach(doc => {
+                    const dados = doc.data();
+                    idsNaNuvemClientes.add(doc.id);
+
+                    // EXCLUSÃO COMPARTILHADA: a marca vive na nuvem, então TODO aparelho a
+                    // respeita. É o que acaba com o registro excluído por um admin voltando
+                    // pelo reenvio de outro.
+                    if (dados.excluido === true) {
+                        removeTombstone('clientes', doc.id); // marca local deixa de ser necessária
+                        return;
+                    }
+
+                    // Marca de exclusão que existe SÓ neste aparelho (feita antes desta
+                    // correção): propaga para a nuvem uma vez, em vez de apagar o documento.
+                    // Apagar era o que fazia o outro aparelho reenviar e começar o vai-e-vem.
                     if (tomb.includes(doc.id)) {
-                        const dados = doc.data();
                         if (registroSuperaExclusao('clientes', doc.id, dados)) {
-                            // O registro da nuvem é mais novo que a exclusão local:
-                            // o item foi recriado legitmamente em outro aparelho.
-                            // Descartamos o tombstone obsoleto e aceitamos o dado.
                             removeTombstone('clientes', doc.id);
                             firebaseClientes.push({ id: doc.id, ...dados });
                         } else {
-                            // A exclusão local é mais recente: apaga da nuvem normalmente.
-                            window.GoianitaFirestore.collection('clientes').doc(doc.id).delete().catch(() => {});
+                            const agora = new Date().toISOString();
+                            window.GoianitaFirestore.collection('clientes').doc(doc.id)
+                                .set({ excluido: true, excluidoEm: agora, atualizadoEm: agora }, { merge: true })
+                                .catch(() => {});
                         }
-                    } else {
-                        firebaseClientes.push({ id: doc.id, ...doc.data() });
+                        return;
                     }
+
+                    firebaseClientes.push({ id: doc.id, ...dados });
                 });
 
                 const tombAtual = tombstonesDe('clientes'); // reler após possíveis removeTombstone acima
                 const localClientes = JSON.parse(localStorage.getItem(DB_KEYS.CLIENTES) || '[]')
                     .filter(c => !tombAtual.includes(c.id));
-                const toUpload = localClientes.filter(localC => !tombAtual.includes(localC.id) && !firebaseClientes.some(fbC => fbC.id === localC.id));
+                // Só sobe o que a nuvem NUNCA viu. Antes, bastava "não estar na lista" para
+                // reenviar — e um registro excluído por outro admin voltava, iniciando um
+                // vai-e-vem infinito (a lista do console ficava piscando).
+                const toUpload = localClientes.filter(localC => !tombAtual.includes(localC.id) && !idsNaNuvemClientes.has(localC.id));
 
                 toUpload.forEach(async (c) => {
                     try { await window.GoianitaFirestore.collection('clientes').doc(c.id).set(c, {merge: true}); } catch(e){}
@@ -265,25 +282,37 @@ function setupFirestoreSync() {
             window.GoianitaFirestore.collection('produtos').onSnapshot(snapshot => {
                 const tomb = tombstonesDe('produtos');
                 const firebaseProdutos = [];
+                const idsNaNuvemProdutos = new Set();
                 snapshot.forEach(doc => {
+                    const dados = doc.data();
+                    idsNaNuvemProdutos.add(doc.id);
+
+                    // Exclusão compartilhada (mesma lógica dos clientes).
+                    if (dados.excluido === true) {
+                        removeTombstone('produtos', doc.id);
+                        return;
+                    }
+
                     if (tomb.includes(doc.id)) {
-                        const dados = doc.data();
                         if (registroSuperaExclusao('produtos', doc.id, dados)) {
-                            // Produto foi recriado depois da exclusão local: aceitar.
                             removeTombstone('produtos', doc.id);
                             firebaseProdutos.push({ id: doc.id, ...dados });
                         } else {
-                            window.GoianitaFirestore.collection('produtos').doc(doc.id).delete().catch(() => {});
+                            const agora = new Date().toISOString();
+                            window.GoianitaFirestore.collection('produtos').doc(doc.id)
+                                .set({ excluido: true, excluidoEm: agora, atualizadoEm: agora }, { merge: true })
+                                .catch(() => {});
                         }
-                    } else {
-                        firebaseProdutos.push({ id: doc.id, ...doc.data() });
+                        return;
                     }
+
+                    firebaseProdutos.push({ id: doc.id, ...dados });
                 });
 
                 const tombAtual = tombstonesDe('produtos');
                 const localProdutos = JSON.parse(localStorage.getItem(DB_KEYS.PRODUTOS) || '[]')
                     .filter(p => !tombAtual.includes(p.id));
-                const toUpload = localProdutos.filter(localP => !tombAtual.includes(localP.id) && !firebaseProdutos.some(fbP => fbP.id === localP.id));
+                const toUpload = localProdutos.filter(localP => !tombAtual.includes(localP.id) && !idsNaNuvemProdutos.has(localP.id));
 
                 toUpload.forEach(async (p) => {
                     try { await window.GoianitaFirestore.collection('produtos').doc(p.id).set(p, {merge: true}); } catch(e){}
@@ -419,6 +448,141 @@ if (GOIANITA_SIMULATION_MODE) {
 }
 
 
+/**
+ * ─────────────────────────────────────────────────────────────────────────────
+ * PADRÃO DE SKU — 201 + código do fornecedor (3) + sequência do produto (2)
+ * ─────────────────────────────────────────────────────────────────────────────
+ * Ex.: fornecedor 014, 5º produto dele → 20101405
+ *
+ * Decisões de projeto (não desfazer sem entender o motivo):
+ *
+ * 1) A geração fica AQUI, dentro de db.js, e não na tela de cadastro. Existe mais de um
+ *    caminho para criar produto (formulário e importação por planilha) e todos passam por
+ *    `db.produtos.save` — na tela, o import continuaria gerando SKU no formato antigo.
+ *
+ * 2) A sequência NUNCA vem de "contar quantos produtos existem". Contagem repete número
+ *    quando um produto é excluído, e cada aparelho tem visão parcial dos dados (dois
+ *    admins gerariam o mesmo). Guardamos `ultimoSequencial` no cadastro do fornecedor e
+ *    só incrementamos.
+ *
+ * 3) O incremento é feito em TRANSAÇÃO no Firestore: é o que garante números diferentes
+ *    para dois cadastros simultâneos. Sem conexão a transação falha — e nesse caso
+ *    preferimos NÃO gravar um produto novo, porque um SKU que muda depois da etiqueta
+ *    impressa é pior que esperar a conexão voltar. Produto já existente (que já tem SKU)
+ *    continua podendo ser editado offline.
+ */
+const GOIANITA_SKU_PREFIXO = '201';
+const GOIANITA_SKU_DIGITOS_PRODUTO = 2;                                   // 2 dígitos = 99 produtos por fornecedor
+const GOIANITA_SKU_MAX_PRODUTO = Math.pow(10, GOIANITA_SKU_DIGITOS_PRODUTO) - 1;
+
+function montarSku(codigoFornecedor, sequencial) {
+    return GOIANITA_SKU_PREFIXO
+        + String(codigoFornecedor).padStart(3, '0')
+        + String(sequencial).padStart(GOIANITA_SKU_DIGITOS_PRODUTO, '0');
+}
+window.GoianitaMontarSku = montarSku;
+
+/**
+ * Próximo código de fornecedor (3 dígitos), reservado em transação num contador único.
+ * Sem Firestore, cai para "maior código local + 1" — aceitável porque cadastro de
+ * fornecedor é raro e a conferência de duplicidade é simples de fazer na tela.
+ */
+async function reservarCodigoFornecedor() {
+    const maiorLocal = () => db.clientes.getAll()
+        .reduce((max, c) => Math.max(max, parseInt(c.codigoFornecedor, 10) || 0), 0);
+
+    if (typeof firebase === 'undefined' || !window.GoianitaFirestore) {
+        return String(maiorLocal() + 1).padStart(3, '0');
+    }
+    const ref = window.GoianitaFirestore.collection('contadores').doc('fornecedores');
+    const novo = await window.GoianitaFirestore.runTransaction(async (tx) => {
+        const snap = await tx.get(ref);
+        const atual = (snap.exists && parseInt(snap.data().ultimo, 10)) || 0;
+        // Nunca voltar atrás: respeita também o que já existe na base local.
+        const proximo = Math.max(atual, maiorLocal()) + 1;
+        tx.set(ref, { ultimo: proximo, atualizadoEm: new Date().toISOString() }, { merge: true });
+        return proximo;
+    });
+    if (novo > 999) throw new Error('O limite de 999 fornecedores do padrão de SKU foi atingido.');
+    return String(novo).padStart(3, '0');
+}
+
+/**
+ * Reserva a próxima sequência de produto DAQUELE fornecedor e devolve o SKU pronto.
+ * A transação é feita no próprio documento do fornecedor, que é onde vive o contador.
+ */
+async function reservarSkuProduto(clienteId) {
+    const cliente = db.clientes.getById(clienteId);
+    if (!cliente) throw new Error('Fornecedor do produto não encontrado.');
+
+    if (typeof firebase === 'undefined' || !window.GoianitaFirestore) {
+        throw new Error('Sem conexão com a nuvem para gerar o código (SKU) do produto. Reconecte e salve novamente — assim o código não muda depois de impresso.');
+    }
+
+    const ref = window.GoianitaFirestore.collection('clientes').doc(clienteId);
+    const seq = await window.GoianitaFirestore.runTransaction(async (tx) => {
+        const snap = await tx.get(ref);
+        const dados = snap.exists ? snap.data() : {};
+
+        let codigo = dados.codigoFornecedor || cliente.codigoFornecedor;
+        if (!codigo) throw new Error('Este fornecedor ainda não tem código. Abra a tela de Fornecedores e use "Gerar códigos" antes de cadastrar produtos.');
+
+        // Considera também os produtos já existentes: protege quando o contador não
+        // acompanhou (base antiga, produto importado, SKU editado à mão).
+        const maiorExistente = db.produtos.getByCliente(clienteId).reduce((max, p) => {
+            const s = String(p.sku || '');
+            if (s.length !== 3 + 3 + GOIANITA_SKU_DIGITOS_PRODUTO) return max;
+            if (s.slice(0, 3) !== GOIANITA_SKU_PREFIXO) return max;
+            return Math.max(max, parseInt(s.slice(6), 10) || 0);
+        }, 0);
+
+        const proximo = Math.max(parseInt(dados.ultimoSequencial, 10) || 0, maiorExistente) + 1;
+        if (proximo > GOIANITA_SKU_MAX_PRODUTO) {
+            throw new Error('Este fornecedor chegou ao limite de ' + GOIANITA_SKU_MAX_PRODUTO +
+                ' produtos permitido pelo padrão de SKU atual (' + (3 + 3 + GOIANITA_SKU_DIGITOS_PRODUTO) +
+                ' dígitos). Para continuar, o padrão precisa de mais um dígito no produto.');
+        }
+        tx.set(ref, { ultimoSequencial: proximo, atualizadoEm: new Date().toISOString() }, { merge: true });
+        return { codigo: codigo, seq: proximo };
+    });
+
+    return montarSku(seq.codigo, seq.seq);
+}
+
+/**
+ * Sobe o contador do fornecedor quando um SKU é informado à mão (edição dos produtos
+ * antigos). Sem isso o contador ficaria ATRÁS do número já usado e um produto novo
+ * cadastrado em outro aparelho poderia nascer com um SKU repetido. Nunca reduz o contador:
+ * baixar um SKU manualmente não libera o número para reuso.
+ */
+async function alinharContadorFornecedor(clienteId, sku) {
+    if (typeof firebase === 'undefined' || !window.GoianitaFirestore) return;
+    const s = String(sku || '');
+    if (s.length !== 3 + 3 + GOIANITA_SKU_DIGITOS_PRODUTO) return;
+    if (s.slice(0, 3) !== GOIANITA_SKU_PREFIXO) return;
+
+    const seq = parseInt(s.slice(6), 10);
+    if (!seq) return;
+
+    // Só alinha se o SKU realmente pertence a este fornecedor (evita mexer no contador
+    // errado quando alguém digita um código de outro fornecedor por engano).
+    const cliente = db.clientes.getById(clienteId);
+    if (!cliente || String(cliente.codigoFornecedor || '').padStart(3, '0') !== s.slice(3, 6)) return;
+
+    try {
+        const ref = window.GoianitaFirestore.collection('clientes').doc(clienteId);
+        await window.GoianitaFirestore.runTransaction(async (tx) => {
+            const snap = await tx.get(ref);
+            const atual = (snap.exists && parseInt(snap.data().ultimoSequencial, 10)) || 0;
+            if (seq > atual) {
+                tx.set(ref, { ultimoSequencial: seq, atualizadoEm: new Date().toISOString() }, { merge: true });
+            }
+        });
+    } catch (e) {
+        console.warn('[SKU] Não foi possível alinhar o contador do fornecedor:', e && e.message);
+    }
+}
+
 const db = {
     // CLIENTES
     clientes: {
@@ -454,6 +618,16 @@ const db = {
                 delete cliente.senha;
             }
 
+            // Código curto de 3 dígitos usado no SKU dos produtos (201 + código + sequência).
+            // Atribuído uma única vez, no primeiro salvamento, e nunca alterado depois —
+            // mudá-lo invalidaria os SKUs já impressos nas etiquetas.
+            if (!cliente.codigoFornecedor) {
+                const jaSalvo = cliente.id ? db.clientes.getById(cliente.id) : null;
+                cliente.codigoFornecedor = (jaSalvo && jaSalvo.codigoFornecedor)
+                    ? jaSalvo.codigoFornecedor
+                    : await reservarCodigoFornecedor();
+            }
+
             if (typeof firebase === 'undefined' || !window.GoianitaFirestore) {
                 const clientes = clientesAtuais;
                 if (cliente.id) {
@@ -482,6 +656,11 @@ const db = {
                 ...cliente,
                 id: id,
                 dataCadastro: dataCadastro,
+                // Recadastrar reativa o registro: sem isso o documento continuaria marcado
+                // como excluído (o ID é derivado do CPF, então é o MESMO documento) e o
+                // cadastro novo desapareceria em todos os aparelhos.
+                excluido: false,
+                excluidoEm: null,
                 atualizadoEm: new Date().toISOString()
             };
 
@@ -529,10 +708,16 @@ const db = {
             const clientes = db.clientes.getAll().filter(c => idsRemover.indexOf(c.id) === -1);
             localStorage.setItem(DB_KEYS.CLIENTES, JSON.stringify(clientes));
 
+            // MARCA a exclusão na nuvem em vez de apagar o documento. Apagar deixava os outros
+            // aparelhos sem saber que foi de propósito: eles ainda tinham o registro local, viam
+            // que "faltava na nuvem" e reenviavam — o que ressuscitava o cadastro e provocava um
+            // vai-e-vem infinito de gravação/exclusão entre as máquinas.
             if (typeof firebase !== 'undefined' && window.GoianitaFirestore) {
+                const agora = new Date().toISOString();
                 for (const rid of idsRemover) {
                     try {
-                        await window.GoianitaFirestore.collection('clientes').doc(rid).delete();
+                        await window.GoianitaFirestore.collection('clientes').doc(rid)
+                            .set({ excluido: true, excluidoEm: agora, atualizadoEm: agora }, { merge: true });
                     } catch(err) {
                         console.error("[Firebase] Erro ao excluir cliente:", err);
                     }
@@ -566,7 +751,12 @@ const db = {
                     }
                 } else {
                     produto.id = 'prod_' + Date.now();
-                    produto.sku = produto.sku || `GOI-PR-${Date.now().toString().slice(-4)}`;
+                    // Sem Firebase não há como reservar o sequencial do SKU com segurança.
+                    // Antes gerava um código no formato antigo aqui, calado — o produto nascia
+                    // fora do padrão e ninguém percebia. Melhor recusar e explicar.
+                    if (!produto.sku) {
+                        throw new Error('Sem conexão com a nuvem para gerar o código (SKU) do produto. Reconecte e cadastre novamente.');
+                    }
                     produto.dataEntrada = new Date().toISOString();
                     const limite = new Date();
                     limite.setDate(limite.getDate() + 180);
@@ -588,7 +778,25 @@ const db = {
                 : window.GoianitaFirestore.collection('produtos').doc();
 
             const id = docRef.id;
-            const sku = produto.sku || `GOI-PR-${Date.now().toString().slice(-4)}`;
+
+            // SKU repetido deixa a busca e os documentos ambíguos — barra antes de gravar.
+            // Vale principalmente para a edição manual dos SKUs antigos.
+            if (produto.sku) {
+                const repetido = db.produtos.getAll().find(p => p.id !== id && String(p.sku) === String(produto.sku));
+                if (repetido) {
+                    throw new Error('O código (SKU) ' + produto.sku + ' já está em uso pelo produto "' + repetido.nome + '".');
+                }
+            }
+
+            // Produto NOVO sem SKU: reserva no padrão 201 + fornecedor + sequência.
+            // Produto existente conserva o SKU que já tem (inclusive para edição offline).
+            const sku = produto.sku || await reservarSkuProduto(produto.clienteId);
+
+            // SKU vindo de fora do gerador (edição manual dos antigos, importação): mantém o
+            // contador do fornecedor à frente do maior número já usado.
+            if (produto.sku && produto.clienteId) {
+                await alinharContadorFornecedor(produto.clienteId, produto.sku);
+            }
             const dataEntrada = produto.dataEntrada || new Date().toISOString();
 
             let dataLimite = produto.dataLimite;
@@ -634,6 +842,8 @@ const db = {
                 dataEntrada: dataEntrada,
                 dataLimite: dataLimite,
                 statusHistorico: statusHistorico,
+                excluido: false,          // reativa caso este documento tenha sido excluído antes
+                excluidoEm: null,
                 atualizadoEm: new Date().toISOString()
             };
 
@@ -668,9 +878,13 @@ const db = {
             const produtos = db.produtos.getAll().filter(p => p.id !== id);
             localStorage.setItem(DB_KEYS.PRODUTOS, JSON.stringify(produtos));
 
+            // Marca a exclusão na nuvem (mesmo motivo dos clientes: apagar fazia outro
+            // aparelho reenviar o registro e iniciava um vai-e-vem infinito).
             if (typeof firebase !== 'undefined' && window.GoianitaFirestore) {
                 try {
-                    await window.GoianitaFirestore.collection('produtos').doc(id).delete();
+                    const agora = new Date().toISOString();
+                    await window.GoianitaFirestore.collection('produtos').doc(id)
+                        .set({ excluido: true, excluidoEm: agora, atualizadoEm: agora }, { merge: true });
                 } catch(err) {
                     console.error("[Firebase] Erro ao excluir produto:", err);
                 }
@@ -1132,13 +1346,18 @@ const db = {
             localStorage.setItem(DB_KEYS.PAGAMENTOS, JSON.stringify([]));
             localStorage.setItem(DB_KEYS.TOMBSTONES, JSON.stringify({}));
 
-            // 2. Apaga os documentos no Firestore, coleção por coleção.
+            // 2. MARCA todos os documentos como excluídos (não apaga). Apagar faria cada outro
+            //    aparelho reenviar a sua cópia local e o banco voltaria sozinho, além de
+            //    disparar o vai-e-vem infinito de gravação/exclusão entre as máquinas.
             if (typeof firebase !== 'undefined' && window.GoianitaFirestore) {
+                const agora = new Date().toISOString();
                 for (const col of ['clientes', 'produtos', 'pagamentos']) {
                     try {
                         const snap = await window.GoianitaFirestore.collection(col).get();
                         for (const doc of snap.docs) {
-                            try { await doc.ref.delete(); } catch (e) {}
+                            try {
+                                await doc.ref.set({ excluido: true, excluidoEm: agora, atualizadoEm: agora }, { merge: true });
+                            } catch (e) {}
                         }
                     } catch (e) {
                         console.error(`[Zerar] Falha ao limpar coleção ${col}:`, e);

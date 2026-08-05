@@ -230,6 +230,15 @@
             </div>
 
             <div class="form-group" style="margin-bottom: 14px;">
+                <label class="form-label" for="edit-prod-sku">Código (SKU)</label>
+                <input type="text" id="edit-prod-sku" class="form-control" style="width: 100%; font-family: Consolas, monospace;" inputmode="numeric" placeholder="Ex: 20101405">
+                <small style="color: var(--text-muted); font-size: 12px;">
+                    Padrão: 201 + código do fornecedor (3 dígitos) + número do produto (2 dígitos).
+                    O sistema recusa um código já usado por outro produto.
+                </small>
+            </div>
+
+            <div class="form-group" style="margin-bottom: 14px;">
                 <label class="form-label" for="edit-prod-categoria">Categoria</label>
                 <select id="edit-prod-categoria" class="filter-select" style="width: 100%;">
                     <option value="Cozinha e Mesa">Cozinha e Mesa</option>

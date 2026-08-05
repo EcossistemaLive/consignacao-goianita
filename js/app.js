@@ -362,6 +362,23 @@ function initMenuAdministradores() {
     if (!window.GoianitaSessao || window.GoianitaSessao.role !== 'admin') return;
     const menu = document.querySelector('.nav-menu');
     if (!menu || document.getElementById('nav-administradores')) return;
+
+    // Algumas páginas já trazem o item "Administradores" escrito no HTML. Sem esta
+    // checagem o item aparecia DUPLICADO no menu (era o caso do dashboard).
+    const jaExiste = Array.from(menu.querySelectorAll('a')).some(
+        a => (a.getAttribute('href') || '').indexOf('administradores.html') !== -1
+    );
+    if (jaExiste) {
+        // Só garante o destaque quando a página aberta é a de administradores.
+        if ((window.location.pathname.split('/').pop() || '') === 'administradores.html') {
+            Array.from(menu.querySelectorAll('a')).forEach(a => {
+                if ((a.getAttribute('href') || '').indexOf('administradores.html') !== -1 && a.parentElement) {
+                    a.parentElement.classList.add('active');
+                }
+            });
+        }
+        return;
+    }
     const emPages = window.location.pathname.indexOf('/pages/') !== -1;
     const li = document.createElement('li');
     li.className = 'nav-item';
@@ -661,6 +678,44 @@ function renderDashboard() {
 }
 
 // --- CLIENTES LISTAGEM E CADASTRO ---
+/**
+ * Atribui o código de 3 dígitos aos fornecedores que ainda não têm (base criada antes do
+ * padrão de SKU). Vai na ORDEM DE CADASTRO, para que o resultado seja o mesmo em qualquer
+ * aparelho, e nunca altera código já atribuído — mudá-lo invalidaria etiquetas impressas.
+ */
+window.gerarCodigosFornecedores = async function() {
+    const todos = window.GoianitaDB.clientes.getAll();
+    const semCodigo = todos
+        .filter(c => !c.codigoFornecedor)
+        .sort((a, b) => new Date(a.dataCadastro || 0) - new Date(b.dataCadastro || 0));
+
+    if (semCodigo.length === 0) {
+        alert('Todos os fornecedores já possuem código.');
+        return;
+    }
+    if (!confirm(semCodigo.length + ' fornecedor(es) sem código:\n\n' +
+        semCodigo.slice(0, 12).map(c => '• ' + c.nome).join('\n') +
+        (semCodigo.length > 12 ? '\n• ...' : '') +
+        '\n\nGerar os códigos agora? Cada um recebe um número sequencial que passa a valer para sempre.')) return;
+
+    let feitos = 0;
+    const falhas = [];
+    for (const c of semCodigo) {
+        try {
+            const atual = window.GoianitaDB.clientes.getById(c.id) || c;
+            if (atual.codigoFornecedor) continue; // outro aparelho já atribuiu
+            await window.GoianitaDB.clientes.save(Object.assign({}, atual), true);
+            feitos++;
+        } catch (e) {
+            falhas.push(c.nome + ': ' + (e && (e.code || e.message)));
+        }
+    }
+
+    alert('Códigos gerados: ' + feitos +
+        (falhas.length ? '\n\nNão foi possível em:\n' + falhas.join('\n') : ''));
+    renderClientesList();
+};
+
 function renderClientesList() {
     const tableBody = document.getElementById('clientes-table-body');
     if (!tableBody) return;
@@ -674,6 +729,9 @@ function renderClientesList() {
             const financeiro = window.GoianitaDB.utils.calcularValoresCliente(c.id);
             return `
                 <tr>
+                    <td>${c.codigoFornecedor
+                        ? `<strong style="font-family: Consolas, monospace;">${esc(c.codigoFornecedor)}</strong>`
+                        : '<span style="color: var(--text-muted); font-size: 12px;">sem código</span>'}</td>
                     <td><strong>${esc(c.nome)}</strong></td>
                     <td>${esc(c.cpf)}</td>
                     <td>${esc(c.telefone)}</td>
@@ -694,11 +752,21 @@ function renderClientesList() {
     if (searchInput) {
         searchInput.addEventListener('input', (e) => {
             const val = e.target.value.toLowerCase();
-            const filtered = clientes.filter(c => 
-                c.nome.toLowerCase().includes(val) || 
-                c.cpf.includes(val) || 
-                c.email.toLowerCase().includes(val)
-            );
+            // Busca também pelo código de 3 dígitos e pelo início do SKU (ex.: "201014"),
+            // porque na prática o atendente tem a etiqueta do produto na mão.
+            const soDigitos = val.replace(/\D/g, '');
+            const filtered = clientes.filter(c => {
+                const cod = String(c.codigoFornecedor || '');
+                const casaCodigo = cod && soDigitos && (
+                    cod === soDigitos ||
+                    cod === soDigitos.padStart(3, '0') ||
+                    (soDigitos.length >= 6 && soDigitos.slice(0, 3) === '201' && soDigitos.slice(3, 6) === cod)
+                );
+                return (c.nome || '').toLowerCase().includes(val) ||
+                       (c.cpf || '').includes(val) ||
+                       (c.email || '').toLowerCase().includes(val) ||
+                       casaCodigo;
+            });
             drawTable(filtered);
         });
     }
@@ -997,7 +1065,9 @@ function renderProdutosList() {
         let list = produtos;
         if (searchInput && searchInput.value) {
             const val = searchInput.value.toLowerCase();
-            list = list.filter(p => p.nome.toLowerCase().includes(val) || p.sku.toLowerCase().includes(val));
+            // Guardas contra campo ausente: um produto sem SKU ou sem nome derrubava a busca.
+            list = list.filter(p => String(p.nome || '').toLowerCase().includes(val) ||
+                                    String(p.sku || '').toLowerCase().includes(val));
         }
         if (filterStatus && filterStatus.value) {
             list = list.filter(p => p.status === filterStatus.value);
@@ -1023,6 +1093,8 @@ window.abrirEditarProduto = function(id) {
     if (!modal) { alert('Modal de edição não encontrado nesta página.'); return; }
     document.getElementById('edit-prod-id').value = produto.id;
     document.getElementById('edit-prod-nome').value = produto.nome || '';
+    const elSku = document.getElementById('edit-prod-sku');
+    if (elSku) elSku.value = produto.sku || '';
     document.getElementById('edit-prod-categoria').value = produto.categoria || 'Outros';
     document.getElementById('edit-prod-marca').value = produto.marca || '';
     const elEmb = document.getElementById('edit-prod-embalagem');
@@ -1049,6 +1121,28 @@ window.salvarEdicaoProduto = async function() {
     const precoStr = document.getElementById('edit-prod-preco').value;
     if (!nome) { alert('Informe o nome do produto.'); return; }
     if (!precoStr) { alert('Informe o preço de venda.'); return; }
+
+    // SKU editado à mão (usado para acertar os produtos cadastrados antes do padrão novo).
+    // Validação de formato aqui; a de duplicidade é feita no save, que é por onde passam
+    // todos os caminhos de gravação.
+    const elSkuEdit = document.getElementById('edit-prod-sku');
+    if (elSkuEdit) {
+        const skuInformado = elSkuEdit.value.trim();
+        if (!skuInformado) { alert('Informe o código (SKU) do produto.'); return; }
+        if (skuInformado !== produto.sku) {
+            if (!/^\d{8}$/.test(skuInformado)) {
+                if (!confirm('O código "' + skuInformado + '" está fora do padrão de 8 dígitos (201 + fornecedor + produto).\n\nSalvar assim mesmo?')) return;
+            } else {
+                const cliente = window.GoianitaDB.clientes.getById(produto.clienteId);
+                const codigoEsperado = cliente && cliente.codigoFornecedor;
+                if (codigoEsperado && skuInformado.slice(3, 6) !== String(codigoEsperado).padStart(3, '0')) {
+                    if (!confirm('Atenção: o código informado indica o fornecedor ' + skuInformado.slice(3, 6) +
+                        ', mas este produto é do fornecedor ' + codigoEsperado + ' (' + (cliente.nome || '') + ').\n\nSalvar assim mesmo?')) return;
+                }
+            }
+        }
+        produto.sku = skuInformado;
+    }
 
     produto.nome = nome;
     produto.categoria = document.getElementById('edit-prod-categoria').value;
@@ -1102,19 +1196,89 @@ function renderProdutoNovo() {
     const selectCliente = document.getElementById('prod-cliente');
     if (!selectCliente) return;
     
-    // Popula dropdown de clientes
-    const clientes = window.GoianitaDB.clientes.getAll();
-    selectCliente.innerHTML = `<option value="">Selecione o Fornecedor...</option>` + 
-        clientes.map(c => `<option value="${esc(c.id)}" data-comissao="${esc(c.comissaoPadrao)}">${esc(c.nome)} (${esc(c.cpf)})</option>`).join('');
-        
-    // Ao selecionar cliente, atualiza a comissão automaticamente
-    selectCliente.addEventListener('change', () => {
-        const opt = selectCliente.selectedOptions[0];
-        const comissao = opt.getAttribute('data-comissao');
-        if (comissao) {
-            document.getElementById('prod-comissao').value = comissao;
+    // Popula dropdown de clientes, em ordem alfabética para facilitar achar na lista.
+    const clientes = window.GoianitaDB.clientes.getAll()
+        .slice()
+        .sort((a, b) => String(a.nome || '').localeCompare(String(b.nome || '')));
+
+    const opcaoCliente = (c) => `<option value="${esc(c.id)}" data-comissao="${esc(c.comissaoPadrao)}">` +
+        `${c.codigoFornecedor ? '[' + esc(c.codigoFornecedor) + '] ' : ''}${esc(c.nome)} (${esc(c.cpf)})</option>`;
+
+    const preencherOpcoes = (lista) => {
+        const selecionadoAntes = selectCliente.value;
+        selectCliente.innerHTML = `<option value="">Selecione o Fornecedor...</option>` +
+            lista.map(opcaoCliente).join('');
+        // Mantém a escolha se ela continuar visível na lista filtrada.
+        if (selecionadoAntes && lista.some(c => c.id === selecionadoAntes)) {
+            selectCliente.value = selecionadoAntes;
         }
-    });
+    };
+    preencherOpcoes(clientes);
+
+    // ── Pesquisa de fornecedor por nome, CPF ou código ──
+    // Filtra as opções do próprio select: o restante do formulário continua lendo
+    // `prod-cliente`.value, então o salvamento não muda em nada.
+    const buscaCliente = document.getElementById('prod-cliente-busca');
+    const infoCliente = document.getElementById('prod-cliente-info');
+    if (buscaCliente) {
+        const filtrar = () => {
+            const termo = buscaCliente.value.trim().toLowerCase();
+            const soDigitos = termo.replace(/\D/g, '');
+
+            const achados = !termo ? clientes : clientes.filter(c => {
+                const nome = String(c.nome || '').toLowerCase();
+                const cpf = String(c.cpf || '').replace(/\D/g, '');
+                const cod = String(c.codigoFornecedor || '');
+                return nome.includes(termo)
+                    || (soDigitos && cpf.includes(soDigitos))
+                    || (soDigitos && cod && (cod === soDigitos || cod === soDigitos.padStart(3, '0')
+                        || (soDigitos.length >= 6 && soDigitos.slice(0, 3) === '201' && soDigitos.slice(3, 6) === cod)));
+            });
+
+            preencherOpcoes(achados);
+
+            if (!termo) {
+                infoCliente.textContent = clientes.length + ' fornecedor(es) cadastrado(s).';
+            } else if (achados.length === 0) {
+                infoCliente.innerHTML = '<span style="color:#b3261e;">Nenhum fornecedor encontrado para "' + esc(buscaCliente.value.trim()) + '".</span>';
+            } else if (achados.length === 1) {
+                // Resultado único: já seleciona e traz a comissão, poupando um clique.
+                selectCliente.value = achados[0].id;
+                selectCliente.dispatchEvent(new Event('change'));
+                infoCliente.innerHTML = 'Selecionado: <strong>' + esc(achados[0].nome) + '</strong>';
+            } else {
+                infoCliente.textContent = achados.length + ' fornecedores encontrados — escolha abaixo.';
+            }
+        };
+
+        // Os ouvintes são ligados UMA vez; já o filtro é reaplicado em toda renderização,
+        // porque esta tela é redesenhada a cada sincronização de dados — sem isso, a lista
+        // voltava a mostrar todos os fornecedores no meio do preenchimento do formulário.
+        if (!buscaCliente.dataset.bound) {
+            buscaCliente.dataset.bound = '1';
+            buscaCliente.addEventListener('input', filtrar);
+            // Enter no campo de busca não deve enviar o formulário pela metade.
+            buscaCliente.addEventListener('keydown', (ev) => {
+                if (ev.key === 'Enter') { ev.preventDefault(); filtrar(); selectCliente.focus(); }
+            });
+        }
+        filtrar();
+    }
+        
+    // Ao selecionar cliente, atualiza a comissão automaticamente.
+    // O ouvinte é ligado UMA vez: esta função roda a cada sincronização e, sem a trava,
+    // os ouvintes se acumulavam (o mesmo evento passava a ser tratado várias vezes).
+    if (!selectCliente.dataset.bound) {
+        selectCliente.dataset.bound = '1';
+        selectCliente.addEventListener('change', () => {
+            const opt = selectCliente.selectedOptions[0];
+            if (!opt) return; // lista pode estar vazia após um filtro sem resultado
+            const comissao = opt.getAttribute('data-comissao');
+            if (comissao) {
+                document.getElementById('prod-comissao').value = comissao;
+            }
+        });
+    }
 
     window.toggleEtapa2 = function(isAprovado) {
         const etapa2 = document.getElementById('etapa-2-dados');
