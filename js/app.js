@@ -116,6 +116,55 @@ const GoianitaSessaoPronta = (function () {
 window.GoianitaSessaoPronta = GoianitaSessaoPronta;
 
 /**
+ * ─────────────────────────────────────────────────────────────────────────────
+ * VISÃO DO FORNECEDOR (acesso não-admin) — somente leitura
+ * ─────────────────────────────────────────────────────────────────────────────
+ * O fornecedor abre a ficha dele (e consegue abrir a ficha de um produto pela URL), onde
+ * existem botões de administração no HTML: editar, excluir, repasse, mídia, Nota de Entrada
+ * e Recibo de Devolução. Nada disso deve aparecer para ele — dos documentos, apenas o
+ * CONTRATO. Esconder aqui, num lugar só, evita depender de cada página lembrar da regra.
+ */
+const GOIANITA_ACOES_SO_ADMIN = /gerarNotaEntrada|gerarReciboDevolucao|imprimirAvaliacoesCliente|imprimirLaudoProduto|editarProdutoAtual|excluirProdutoAtual|salvarEdicaoProduto|abrirEditarProduto|definirCodigoFornecedor|gerarCodigosFornecedores|restaurarFornecedorExcluido|goianitaForcarSync|zerarTudo|media-upload-input/i;
+
+const GOIANITA_IDS_SO_ADMIN = [
+    'btn-pagar-cliente',            // efetuar repasse PIX
+    'btn-excluir-cliente',
+    'btn-novo-cliente-trigger',
+    'btn-import-clientes-trigger',
+    'btn-salvar-edicao-produto',
+    'btn-adicionar-midia'
+];
+
+// Telas que só fazem sentido para administrador — os itens de menu são escondidos para o
+// fornecedor (clicar neles apenas o devolveria para a própria ficha).
+const GOIANITA_PAGINAS_SO_ADMIN = /dashboard\.html|clientes\.html|produtos\.html|produto-novo\.html|financeiro\.html|admins\.html|administradores\.html|diagnostico\.html/;
+
+function aplicarRestricoesCliente() {
+    const papel = (window.GoianitaSessao && window.GoianitaSessao.role) || sessionStorage.getItem('goianita_role') || '';
+    if (papel !== 'user') return;
+
+    const esconder = (el) => { if (el) el.style.display = 'none'; };
+
+    GOIANITA_IDS_SO_ADMIN.forEach(id => esconder(document.getElementById(id)));
+
+    // Botões e links com ação de administração declarada no onclick.
+    document.querySelectorAll('button[onclick], a[onclick]').forEach(el => {
+        if (GOIANITA_ACOES_SO_ADMIN.test(el.getAttribute('onclick') || '')) esconder(el);
+    });
+
+    // Itens de menu que levam a telas de administração.
+    document.querySelectorAll('.nav-menu a').forEach(a => {
+        if (GOIANITA_PAGINAS_SO_ADMIN.test(a.getAttribute('href') || '')) esconder(a.parentElement || a);
+    });
+
+    // "Voltar à Lista" leva à relação de todos os fornecedores: não é do fornecedor.
+    document.querySelectorAll('a[href*="clientes.html"]').forEach(a => esconder(a));
+
+    // Modal de edição de produto, caso alguém chegue nele por outro caminho.
+    esconder(document.getElementById('modal-editar-produto'));
+}
+
+/**
  * ORDEM DOS PRODUTOS — uma única regra usada por TODAS as listas e documentos.
  * Fica centralizado de propósito: se cada tela ordenasse do seu jeito, dois usuários veriam
  * a mesma lista em ordens diferentes. O critério é a data de cadastro (mais antigo primeiro),
@@ -313,9 +362,13 @@ function renderActivePage() {
         renderProdutoDetalhe();
     } else if (pageName === 'financeiro.html') {
         renderFinanceiro();
-    } else if (pageName === 'administradores.html') {
-        renderAdministradores();
     }
+    // Observação: a gestão de administradores fica em pages/admins.html, que tem o próprio
+    // script embutido — não passa por este roteador.
+
+    // Reaplicado após cada renderização: parte do conteúdo é remontada dinamicamente e
+    // poderia reintroduzir botões de administração na tela do fornecedor.
+    aplicarRestricoesCliente();
 }
 
 /**
@@ -363,19 +416,17 @@ function initMenuAdministradores() {
     const menu = document.querySelector('.nav-menu');
     if (!menu || document.getElementById('nav-administradores')) return;
 
-    // Algumas páginas já trazem o item "Administradores" escrito no HTML. Sem esta
-    // checagem o item aparecia DUPLICADO no menu (era o caso do dashboard).
-    const jaExiste = Array.from(menu.querySelectorAll('a')).some(
-        a => (a.getAttribute('href') || '').indexOf('administradores.html') !== -1
-    );
-    if (jaExiste) {
-        // Só garante o destaque quando a página aberta é a de administradores.
-        if ((window.location.pathname.split('/').pop() || '') === 'administradores.html') {
-            Array.from(menu.querySelectorAll('a')).forEach(a => {
-                if ((a.getAttribute('href') || '').indexOf('administradores.html') !== -1 && a.parentElement) {
-                    a.parentElement.classList.add('active');
-                }
-            });
+    // Várias páginas já trazem o item "Administradores" escrito no HTML, apontando para
+    // pages/admins.html — que é a tela oficial. A verificação precisa reconhecer os DOIS
+    // nomes de arquivo: foi por não reconhecer "admins.html" que o item saiu duplicado.
+    const ehLinkDeAdmins = (a) => /admins\.html|administradores\.html/.test(a.getAttribute('href') || '');
+    const links = Array.from(menu.querySelectorAll('a'));
+    const paginaAtual = window.location.pathname.split('/').pop() || '';
+
+    if (links.some(ehLinkDeAdmins)) {
+        // Já existe no HTML: não injeta nada, só destaca quando estamos nessa tela.
+        if (paginaAtual === 'admins.html' || paginaAtual === 'administradores.html') {
+            links.forEach(a => { if (ehLinkDeAdmins(a) && a.parentElement) a.parentElement.classList.add('active'); });
         }
         return;
     }
@@ -383,7 +434,7 @@ function initMenuAdministradores() {
     const li = document.createElement('li');
     li.className = 'nav-item';
     li.id = 'nav-administradores';
-    li.innerHTML = '<a href="' + (emPages ? 'administradores.html' : 'pages/administradores.html') + '">' +
+    li.innerHTML = '<a href="' + (emPages ? 'admins.html' : 'pages/admins.html') + '">' +
         '<i class="fa-solid fa-user-shield"></i> Administradores</a>';
     menu.appendChild(li);
     if ((window.location.pathname.split('/').pop() || '') === 'administradores.html') {

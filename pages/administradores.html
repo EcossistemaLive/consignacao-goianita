@@ -2,142 +2,20 @@
 <html lang="pt-BR">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Administradores - Goianita Novo de novo</title>
-    <!-- Firebase SDKs -->
-    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-auth-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-storage-compat.js"></script>
-    <link rel="stylesheet" href="../css/style.css">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!--
+      Esta tela foi descontinuada. A gestão de administradores é feita em pages/admins.html,
+      que já existia no projeto e continua sendo a única tela válida. Este arquivo permanece
+      apenas para redirecionar quem tenha guardado o link antigo, evitando duas telas
+      concorrentes gravando na mesma coleção `admins`.
+    -->
+    <title>Administradores - Goianita</title>
+    <meta http-equiv="refresh" content="0; url=admins.html">
+    <script>window.location.replace('admins.html');</script>
 </head>
 <body>
-    <div class="app-container">
-        <aside class="sidebar">
-            <div class="logo-container">
-                <img src="../logo.png" alt="Logo Goianita" />
-                <div>
-                    <span class="logo-text">Goianita Novo de novo</span>
-                    <span class="logo-sub">Consignações</span>
-                </div>
-            </div>
-
-            <nav>
-                <ul class="nav-menu">
-                    <li class="nav-item">
-                        <a href="../dashboard.html"><i class="fa-solid fa-chart-line"></i> Dashboard</a>
-                    </li>
-                    <li class="nav-item">
-                        <a href="clientes.html"><i class="fa-solid fa-users"></i> Clientes / Fornecedores</a>
-                    </li>
-                    <li class="nav-item">
-                        <a href="produtos.html"><i class="fa-solid fa-box-open"></i> Produtos Consignados</a>
-                    </li>
-                    <li class="nav-item">
-                        <a href="financeiro.html"><i class="fa-solid fa-wallet"></i> Financeiro / Repasses</a>
-                    </li>
-                    <li class="nav-item">
-                        <a href="regulamento.html"><i class="fa-solid fa-file-contract"></i> Regulamento</a>
-                    </li>
-                </ul>
-            </nav>
-
-            <div class="sidebar-footer">
-                <div class="user-badge">
-                    <div class="user-avatar">AD</div>
-                    <div class="user-info">
-                        <span class="user-name">Administrador</span>
-                        <span class="user-role">Administrador</span>
-                    </div>
-                </div>
-                <a href="#" id="btn-logout" class="btn btn-secondary" style="width: 100%; margin-top: 16px; padding: 8px; font-size: 13px; color: #ffffff; border-color: rgba(255,255,255,0.2); background-color: rgba(255,255,255,0.08); display: flex; align-items: center; justify-content: center; gap: 8px;">
-                    <i class="fa-solid fa-right-from-bracket"></i> Sair
-                </a>
-            </div>
-        </aside>
-
-        <main class="main-content">
-            <header class="page-header">
-                <div>
-                    <h1 class="page-title">Administradores</h1>
-                    <p class="page-subtitle">Quem pode acessar o sistema como administrador. A lista vale para todos os aparelhos.</p>
-                </div>
-                <div style="display: flex; gap: 12px; flex-wrap: wrap;">
-                    <button class="btn btn-primary" onclick="abrirFormAdmin()">
-                        <i class="fa-solid fa-user-plus"></i> Incluir Administrador
-                    </button>
-                    <a href="../dashboard.html" class="btn btn-secondary">
-                        <i class="fa-solid fa-arrow-left"></i> Voltar
-                    </a>
-                </div>
-            </header>
-
-            <div id="admin-aviso" style="display:none; padding:12px 14px; border-radius:6px; font-size:14px; margin-bottom:16px; line-height:1.45;"></div>
-
-            <!-- Formulário (aparece ao incluir/editar) -->
-            <div id="admin-form-box" style="display:none; background:var(--bg-card, #fff); border-radius:10px; padding:20px 24px; margin-bottom:20px; box-shadow:0 2px 8px rgba(0,0,0,.06);">
-                <h3 id="admin-form-titulo" style="margin-top:0;">Incluir Administrador</h3>
-                <form id="admin-form">
-                    <input type="hidden" id="adm-id-original">
-                    <div class="form-grid" style="display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:16px;">
-                        <div class="form-group">
-                            <label class="form-label" for="adm-nome">Nome</label>
-                            <input type="text" id="adm-nome" class="form-control" placeholder="Ex: Adriano Estevão" required>
-                        </div>
-                        <div class="form-group">
-                            <label class="form-label" for="adm-email">E-mail de acesso</label>
-                            <input type="email" id="adm-email" class="form-control" placeholder="nome@dominio.com" required>
-                        </div>
-                        <div class="form-group">
-                            <label class="form-label" for="adm-atalho">Atalho de digitação (opcional)</label>
-                            <input type="text" id="adm-atalho" class="form-control" placeholder="Ex: adriano">
-                            <small style="color:var(--text-muted); font-size:12px;">Permite entrar digitando só esta palavra em vez do e-mail inteiro.</small>
-                        </div>
-                        <div class="form-group">
-                            <label class="form-label" for="adm-ativo">Situação</label>
-                            <select id="adm-ativo" class="form-control">
-                                <option value="true">Ativo</option>
-                                <option value="false">Inativo (bloqueado)</option>
-                            </select>
-                        </div>
-                    </div>
-                    <div style="display:flex; gap:12px; margin-top:18px;">
-                        <button type="submit" class="btn btn-primary"><i class="fa-solid fa-floppy-disk"></i> Salvar</button>
-                        <button type="button" class="btn btn-secondary" onclick="fecharFormAdmin()">Cancelar</button>
-                    </div>
-                </form>
-            </div>
-
-            <div class="table-container">
-                <div class="table-header-bar">
-                    <h3>Administradores cadastrados</h3>
-                </div>
-                <table class="premium-table">
-                    <thead>
-                        <tr>
-                            <th>Nome</th>
-                            <th>E-mail de acesso</th>
-                            <th>Atalho</th>
-                            <th>Situação</th>
-                            <th>Ações</th>
-                        </tr>
-                    </thead>
-                    <tbody id="admins-table-body">
-                        <tr><td colspan="5" style="text-align:center; color:var(--text-muted);">Carregando...</td></tr>
-                    </tbody>
-                </table>
-            </div>
-
-            <div style="margin-top:18px; font-size:13px; color:var(--text-muted); line-height:1.6;">
-                <strong>Como um novo administrador entra:</strong> depois de incluído aqui, ele abre o sistema, digita o
-                atalho (ou o e-mail) com qualquer senha e confirma <em>"fazer primeiro acesso e criar uma senha"</em>.
-                A senha é definida por ele mesmo — ninguém mais precisa saber.
-            </div>
-        </main>
-    </div>
-
-    <script src="../js/db.js"></script>
-    <script src="../js/app.js"></script>
+    <p style="font-family: system-ui, sans-serif; padding: 24px;">
+        Redirecionando para a tela de Administradores…
+        Se nada acontecer, <a href="admins.html">clique aqui</a>.
+    </p>
 </body>
 </html>
