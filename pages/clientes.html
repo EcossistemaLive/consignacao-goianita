@@ -76,8 +76,11 @@
                     <p class="page-subtitle">Gerenciamento de proprietários de itens consignados e chaves de pagamento PIX.</p>
                 </div>
                 <div style="display: flex; gap: 12px;">
-                    <button class="btn btn-secondary" onclick="gerarCodigosFornecedores()" title="Atribui o código de 3 dígitos (usado no SKU) aos fornecedores que ainda não têm">
+                    <button class="btn btn-secondary" onclick="gerarCodigosFornecedores()" title="Atribui o código (usado no SKU) aos fornecedores sem código ou fora da faixa">
                         <i class="fa-solid fa-hashtag"></i> Gerar códigos
+                    </button>
+                    <button class="btn btn-secondary" onclick="restaurarFornecedorExcluido()" title="Traz de volta um fornecedor excluído, com os produtos dele">
+                        <i class="fa-solid fa-rotate-left"></i> Restaurar excluído
                     </button>
                     <a href="diagnostico.html" class="btn btn-secondary" title="Verificar se este aparelho está gravando e lendo na nuvem">
                         <i class="fa-solid fa-stethoscope"></i> Diagnóstico

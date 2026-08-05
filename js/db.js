@@ -129,6 +129,9 @@ function removeTombstone(colecao, id) {
 function tombstonesDe(colecao) {
     return (getTombstones()[colecao] || []).map(x => (typeof x === 'string' ? x : (x && x.id))).filter(Boolean);
 }
+// Expostos para a rotina de restauração de registros excluídos (js/app.js).
+window.GoianitaRemoveTombstone = removeTombstone;
+window.GoianitaTombstonesDe = tombstonesDe;
 // Data da exclusão daquele ID (null se for do formato antigo, sem data).
 function tombstoneEm(colecao, id) {
     const item = (getTombstones()[colecao] || []).find(x => (typeof x === 'string' ? x : x && x.id) === id);
@@ -472,6 +475,8 @@ if (GOIANITA_SIMULATION_MODE) {
  *    continua podendo ser editado offline.
  */
 const GOIANITA_SKU_PREFIXO = '201';
+const GOIANITA_SKU_FORNECEDOR_INICIAL = 101;                              // 1º fornecedor = 101 → SKU 20110101
+const GOIANITA_SKU_FORNECEDOR_MAX = 999;                                  // faixa 101..999 = 899 fornecedores
 const GOIANITA_SKU_DIGITOS_PRODUTO = 2;                                   // 2 dígitos = 99 produtos por fornecedor
 const GOIANITA_SKU_MAX_PRODUTO = Math.pow(10, GOIANITA_SKU_DIGITOS_PRODUTO) - 1;
 
@@ -481,6 +486,12 @@ function montarSku(codigoFornecedor, sequencial) {
         + String(sequencial).padStart(GOIANITA_SKU_DIGITOS_PRODUTO, '0');
 }
 window.GoianitaMontarSku = montarSku;
+window.GoianitaSkuConfig = {
+    prefixo: GOIANITA_SKU_PREFIXO,
+    fornecedorInicial: GOIANITA_SKU_FORNECEDOR_INICIAL,
+    fornecedorMax: GOIANITA_SKU_FORNECEDOR_MAX,
+    digitosProduto: GOIANITA_SKU_DIGITOS_PRODUTO
+};
 
 /**
  * Próximo código de fornecedor (3 dígitos), reservado em transação num contador único.
@@ -488,8 +499,11 @@ window.GoianitaMontarSku = montarSku;
  * fornecedor é raro e a conferência de duplicidade é simples de fazer na tela.
  */
 async function reservarCodigoFornecedor() {
+    // A numeração começa em 101 (1º fornecedor = 101), conforme o padrão definido:
+    // 201 + 101 + 01 → 20110101 para o primeiro produto do primeiro fornecedor.
+    const piso = GOIANITA_SKU_FORNECEDOR_INICIAL - 1;
     const maiorLocal = () => db.clientes.getAll()
-        .reduce((max, c) => Math.max(max, parseInt(c.codigoFornecedor, 10) || 0), 0);
+        .reduce((max, c) => Math.max(max, parseInt(c.codigoFornecedor, 10) || 0), piso);
 
     if (typeof firebase === 'undefined' || !window.GoianitaFirestore) {
         return String(maiorLocal() + 1).padStart(3, '0');
@@ -498,14 +512,18 @@ async function reservarCodigoFornecedor() {
     const novo = await window.GoianitaFirestore.runTransaction(async (tx) => {
         const snap = await tx.get(ref);
         const atual = (snap.exists && parseInt(snap.data().ultimo, 10)) || 0;
-        // Nunca voltar atrás: respeita também o que já existe na base local.
-        const proximo = Math.max(atual, maiorLocal()) + 1;
+        // Nunca voltar atrás: respeita o contador, a base local e o piso da faixa.
+        const proximo = Math.max(atual, maiorLocal(), piso) + 1;
         tx.set(ref, { ultimo: proximo, atualizadoEm: new Date().toISOString() }, { merge: true });
         return proximo;
     });
-    if (novo > 999) throw new Error('O limite de 999 fornecedores do padrão de SKU foi atingido.');
+    if (novo > GOIANITA_SKU_FORNECEDOR_MAX) {
+        throw new Error('A faixa de fornecedores do padrão de SKU (' + GOIANITA_SKU_FORNECEDOR_INICIAL +
+            ' a ' + GOIANITA_SKU_FORNECEDOR_MAX + ') foi esgotada.');
+    }
     return String(novo).padStart(3, '0');
 }
+window.GoianitaReservarCodigoFornecedor = reservarCodigoFornecedor;
 
 /**
  * Reserva a próxima sequência de produto DAQUELE fornecedor e devolve o SKU pronto.

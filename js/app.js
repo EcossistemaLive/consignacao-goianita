@@ -683,35 +683,207 @@ function renderDashboard() {
  * padrão de SKU). Vai na ORDEM DE CADASTRO, para que o resultado seja o mesmo em qualquer
  * aparelho, e nunca altera código já atribuído — mudá-lo invalidaria etiquetas impressas.
  */
-window.gerarCodigosFornecedores = async function() {
-    const todos = window.GoianitaDB.clientes.getAll();
-    const semCodigo = todos
-        .filter(c => !c.codigoFornecedor)
-        .sort((a, b) => new Date(a.dataCadastro || 0) - new Date(b.dataCadastro || 0));
+/**
+ * Aplica um código a um fornecedor e reescreve os SKUs dos produtos dele que usavam o
+ * código anterior (mantendo o número do produto). Centralizado aqui para que a geração
+ * automática e a definição manual sigam exatamente a mesma regra.
+ */
+async function aplicarCodigoFornecedor(clienteId, novoCodigo) {
+    const cfg = window.GoianitaSkuConfig || { prefixo: '201', digitosProduto: 2 };
+    const cliente = window.GoianitaDB.clientes.getById(clienteId);
+    if (!cliente) throw new Error('Fornecedor não encontrado nesta máquina.');
 
-    if (semCodigo.length === 0) {
-        alert('Todos os fornecedores já possuem código.');
+    const novo = String(novoCodigo).padStart(3, '0');
+    const antigo = cliente.codigoFornecedor ? String(cliente.codigoFornecedor).padStart(3, '0') : null;
+    if (antigo === novo) return { skus: 0 };
+
+    const conflito = window.GoianitaDB.clientes.getAll().find(c =>
+        c.id !== clienteId && String(c.codigoFornecedor || '').padStart(3, '0') === novo);
+    if (conflito) throw new Error('O código ' + novo + ' já pertence a "' + conflito.nome + '".');
+
+    await window.GoianitaDB.clientes.save(Object.assign({}, cliente, { codigoFornecedor: novo }), true);
+
+    // Alinha TODOS os produtos deste fornecedor que estejam no formato novo, qualquer que
+    // seja o código no meio do SKU. Por definição o produto é dele, então o trecho do
+    // fornecedor tem de ser o código dele. Antes eu só reescrevia quando havia um código
+    // anterior conhecido — e um fornecedor restaurado da nuvem (que perdeu o código) ficava
+    // com os SKUs apontando para outro número.
+    let skus = 0;
+    for (const p of window.GoianitaDB.produtos.getByCliente(clienteId)) {
+        const s = String(p.sku || '');
+        if (s.length !== 6 + cfg.digitosProduto) continue;   // formato antigo (GOI-PR-...): não mexe
+        if (s.slice(0, 3) !== cfg.prefixo) continue;
+        if (s.slice(3, 6) === novo) continue;                // já está correto
+        await window.GoianitaDB.produtos.save(Object.assign({}, p, { sku: cfg.prefixo + novo + s.slice(6) }), true);
+        skus++;
+    }
+    return { skus: skus };
+}
+
+/**
+ * Define o código de um fornecedor à mão. Existe porque a numeração automática segue a
+ * ordem de cadastro, e às vezes é preciso reservar um número específico para alguém.
+ */
+window.definirCodigoFornecedor = async function(clienteId) {
+    const cfg = window.GoianitaSkuConfig || { fornecedorInicial: 101, fornecedorMax: 999 };
+    const cliente = window.GoianitaDB.clientes.getById(clienteId);
+    if (!cliente) { alert('Fornecedor não encontrado.'); return; }
+
+    const digitado = prompt('Código de ' + cliente.nome + ' (faixa ' + cfg.fornecedorInicial +
+        ' a ' + cfg.fornecedorMax + '):', cliente.codigoFornecedor || String(cfg.fornecedorInicial));
+    if (digitado === null) return;
+
+    const n = parseInt(String(digitado).replace(/\D/g, ''), 10);
+    if (isNaN(n) || n < cfg.fornecedorInicial || n > cfg.fornecedorMax) {
+        alert('Informe um número entre ' + cfg.fornecedorInicial + ' e ' + cfg.fornecedorMax + '.');
         return;
     }
-    if (!confirm(semCodigo.length + ' fornecedor(es) sem código:\n\n' +
-        semCodigo.slice(0, 12).map(c => '• ' + c.nome).join('\n') +
-        (semCodigo.length > 12 ? '\n• ...' : '') +
-        '\n\nGerar os códigos agora? Cada um recebe um número sequencial que passa a valer para sempre.')) return;
 
-    let feitos = 0;
+    try {
+        const r = await aplicarCodigoFornecedor(clienteId, n);
+        alert('Código de ' + cliente.nome + ' definido como ' + String(n).padStart(3, '0') + '.' +
+            (r.skus ? '\nSKUs de produtos ajustados: ' + r.skus : ''));
+        renderClientesList();
+    } catch (e) {
+        alert('Não foi possível: ' + (e && e.message));
+    }
+};
+
+/**
+ * Restaura um fornecedor que foi excluído (e os produtos dele), trazendo os dados da nuvem.
+ * Necessário porque a exclusão deixa uma marca no aparelho: sem removê-la, o registro
+ * continuaria escondido aqui e a marca ainda tentaria propagar a exclusão para a nuvem.
+ */
+window.restaurarFornecedorExcluido = async function() {
+    if (!window.GoianitaFirestore) { alert('Sem conexão com a nuvem.'); return; }
+
+    let docs = [];
+    try {
+        const snap = await window.GoianitaFirestore.collection('clientes').get({ source: 'server' });
+        docs = snap.docs.map(d => Object.assign({ id: d.id }, d.data()));
+    } catch (e) {
+        alert('Não foi possível ler a nuvem: ' + (e && (e.code || e.message)));
+        return;
+    }
+
+    const idsLocais = new Set(window.GoianitaDB.clientes.getAll().map(c => c.id));
+    const marcados = new Set(window.GoianitaTombstonesDe('clientes'));
+    // Candidatos: marcados como excluídos na nuvem, escondidos por marca local, ou que
+    // simplesmente não estão nesta máquina.
+    const ocultos = docs.filter(c => c.excluido === true || marcados.has(c.id) || !idsLocais.has(c.id));
+
+    if (ocultos.length === 0) {
+        alert('Nenhum fornecedor excluído ou ausente foi encontrado na nuvem.');
+        return;
+    }
+
+    const lista = ocultos.map((c, i) => (i + 1) + ') ' + (c.nome || '(sem nome)') + ' — CPF ' + (c.cpf || '?') +
+        (c.excluido === true ? ' [excluído na nuvem]' : (marcados.has(c.id) ? ' [excluído nesta máquina]' : ' [ausente aqui]')));
+    const escolha = prompt('Fornecedores que podem ser restaurados:\n\n' + lista.join('\n') +
+        '\n\nDigite o número do que deseja restaurar:');
+    if (escolha === null) return;
+
+    const idx = parseInt(escolha, 10) - 1;
+    if (isNaN(idx) || idx < 0 || idx >= ocultos.length) { alert('Opção inválida.'); return; }
+
+    const alvo = ocultos[idx];
+    if (!confirm('Restaurar "' + alvo.nome + '" (CPF ' + alvo.cpf + ') e os produtos vinculados a ele?')) return;
+
+    try {
+        // 1. Apaga a marca local de exclusão — senão ele volta a ser escondido/apagado.
+        window.GoianitaRemoveTombstone('clientes', alvo.id);
+
+        // 2. Reativa o cadastro na nuvem e grava localmente.
+        const limpo = Object.assign({}, alvo);
+        delete limpo.excluido;
+        delete limpo.excluidoEm;
+        await window.GoianitaDB.clientes.save(limpo, true);
+
+        // 3. Traz os produtos dele, reativando os que estavam excluídos.
+        let produtosOk = 0;
+        const snapProd = await window.GoianitaFirestore.collection('produtos').get({ source: 'server' });
+        for (const d of snapProd.docs) {
+            const p = Object.assign({ id: d.id }, d.data());
+            if (p.clienteId !== alvo.id) continue;
+            window.GoianitaRemoveTombstone('produtos', p.id);
+            const pl = Object.assign({}, p);
+            delete pl.excluido;
+            delete pl.excluidoEm;
+            await window.GoianitaDB.produtos.save(pl, true);
+            produtosOk++;
+        }
+
+        alert('"' + alvo.nome + '" restaurado.\nProdutos recuperados: ' + produtosOk +
+            '\n\nSe precisar de um código específico, use o botão "Código" na linha dele.');
+        renderClientesList();
+    } catch (e) {
+        alert('Falha ao restaurar: ' + (e && (e.code || e.message)));
+    }
+};
+
+window.gerarCodigosFornecedores = async function() {
+    const cfg = window.GoianitaSkuConfig || { prefixo: '201', fornecedorInicial: 101, digitosProduto: 2 };
+    const inicial = cfg.fornecedorInicial;
+
+    const todos = window.GoianitaDB.clientes.getAll();
+    // Entram na fila: quem não tem código E quem tem código FORA da faixa oficial
+    // (a primeira versão numerava a partir de 001; o padrão correto começa em 101).
+    const pendentes = todos
+        .filter(c => {
+            const n = parseInt(c.codigoFornecedor, 10);
+            return !c.codigoFornecedor || isNaN(n) || n < inicial;
+        })
+        .sort((a, b) => new Date(a.dataCadastro || 0) - new Date(b.dataCadastro || 0));
+
+    if (pendentes.length === 0) {
+        alert('Todos os fornecedores já possuem código dentro do padrão (a partir de ' + inicial + ').');
+        return;
+    }
+
+    // Prévia do que muda, incluindo quantos SKUs de produtos serão reescritos.
+    const linhas = pendentes.map(c => {
+        const antigo = c.codigoFornecedor ? String(c.codigoFornecedor).padStart(3, '0') : null;
+        const qtdSkus = antigo
+            ? window.GoianitaDB.produtos.getByCliente(c.id).filter(p => {
+                  const s = String(p.sku || '');
+                  return s.length === 6 + cfg.digitosProduto && s.slice(0, 3) === cfg.prefixo && s.slice(3, 6) === antigo;
+              }).length
+            : 0;
+        return '• ' + c.nome + (antigo ? ' (hoje ' + antigo + ')' : ' (sem código)') +
+               (qtdSkus ? ' — ' + qtdSkus + ' SKU(s) de produto serão ajustados' : '');
+    });
+
+    if (!confirm(pendentes.length + ' fornecedor(es) a numerar, na ordem de cadastro:\n\n' +
+        linhas.slice(0, 12).join('\n') + (linhas.length > 12 ? '\n• ...' : '') +
+        '\n\nOs códigos passam a começar em ' + inicial + ' (ex.: primeiro produto do primeiro fornecedor = ' +
+        cfg.prefixo + inicial + '01).\n\nConfirma? O código de cada fornecedor passa a valer para sempre.')) return;
+
+    let feitos = 0, skusAjustados = 0;
     const falhas = [];
-    for (const c of semCodigo) {
+
+    for (const c of pendentes) {
         try {
-            const atual = window.GoianitaDB.clientes.getById(c.id) || c;
-            if (atual.codigoFornecedor) continue; // outro aparelho já atribuiu
-            await window.GoianitaDB.clientes.save(Object.assign({}, atual), true);
+            const atual = Object.assign({}, window.GoianitaDB.clientes.getById(c.id) || c);
+            const antigo = atual.codigoFornecedor ? String(atual.codigoFornecedor).padStart(3, '0') : null;
+
+            // Já corrigido por outro aparelho enquanto rodávamos: não mexe.
+            const nAtual = parseInt(atual.codigoFornecedor, 10);
+            if (!isNaN(nAtual) && nAtual >= inicial) continue;
+
+            const novo = await window.GoianitaReservarCodigoFornecedor();
+            // Mesma função usada na definição manual: garante regra única para gravar o
+            // código e realinhar os SKUs dos produtos.
+            const r = await aplicarCodigoFornecedor(c.id, novo);
             feitos++;
+            skusAjustados += r.skus;
         } catch (e) {
             falhas.push(c.nome + ': ' + (e && (e.code || e.message)));
         }
     }
 
-    alert('Códigos gerados: ' + feitos +
+    await window.GoianitaDB.importExport.syncToGoogleSheets();
+    alert('Fornecedores numerados: ' + feitos +
+        (skusAjustados ? '\nSKUs de produtos ajustados: ' + skusAjustados : '') +
         (falhas.length ? '\n\nNão foi possível em:\n' + falhas.join('\n') : ''));
     renderClientesList();
 };
@@ -737,8 +909,10 @@ function renderClientesList() {
                     <td>${esc(c.telefone)}</td>
                     <td>${financeiro.produtosTotais} produtos</td>
                     <td><strong style="color: var(--accent-gold);">${formatCurrency(financeiro.saldoPendente)}</strong></td>
-                    <td>
+                    <td style="display: flex; gap: 8px; flex-wrap: wrap;">
                         <a href="cliente-detalhe.html?id=${encodeURIComponent(c.id)}" class="btn btn-secondary" style="padding: 6px 12px; font-size: 12px;">Visualizar</a>
+                        <button class="btn btn-secondary" style="padding: 6px 12px; font-size: 12px;"
+                                onclick="definirCodigoFornecedor('${esc(c.id)}')" title="Definir o código deste fornecedor (usado no SKU)">Código</button>
                     </td>
                 </tr>
             `;

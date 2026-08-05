@@ -231,9 +231,10 @@
 
             <div class="form-group" style="margin-bottom: 14px;">
                 <label class="form-label" for="edit-prod-sku">Código (SKU)</label>
-                <input type="text" id="edit-prod-sku" class="form-control" style="width: 100%; font-family: Consolas, monospace;" inputmode="numeric" placeholder="Ex: 20101405">
+                <input type="text" id="edit-prod-sku" class="form-control" style="width: 100%; font-family: Consolas, monospace;" inputmode="numeric" placeholder="Ex: 20110101">
                 <small style="color: var(--text-muted); font-size: 12px;">
-                    Padrão: 201 + código do fornecedor (3 dígitos) + número do produto (2 dígitos).
+                    Padrão: 201 + código do fornecedor (a partir de 101) + número do produto (01 a 99).
+                    Ex.: primeiro produto do primeiro fornecedor = 20110101.
                     O sistema recusa um código já usado por outro produto.
                 </small>
             </div>
