@@ -46,7 +46,9 @@
                             <i class="fa-solid fa-wallet"></i> Financeiro / Repasses
                         </a>
                     </li>
-                    <li class="nav-item"><a href="admins.html"><i class="fa-solid fa-user-shield"></i> Administradores</a></li><li class="nav-item">
+                    <li class="nav-item"><a href="admins.html"><i class="fa-solid fa-user-shield"></i> Administradores</a></li>
+                    <li class="nav-item"><a href="embaixadores.html"><i class="fa-solid fa-handshake"></i> Embaixadores</a></li>
+                    <li class="nav-item">
                         <a href="regulamento.html">
                             <i class="fa-solid fa-file-contract"></i> Regulamento
                         </a>
@@ -134,8 +136,31 @@
                     </tbody>
                 </table>
             </div>
-        </main>
-    </div>
+
+        <!-- Tabela Balanço de Embaixadores / Parceiros de Captação -->
+        <div class="table-container" style="margin-top: 20px;">
+            <div class="table-header-bar" style="border-left: 4px solid var(--accent-gold);">
+                <h3><i class="fa-solid fa-handshake" style="color:var(--accent-gold);margin-right:8px;"></i>Repasses a Embaixadores / Parceiros de Captação</h3>
+                <a href="embaixadores.html" class="btn btn-secondary" style="padding: 6px 14px; font-size: 12px;">Ver Painel Completo</a>
+            </div>
+            <table class="premium-table">
+                <thead>
+                    <tr>
+                        <th>Embaixador / Cupom</th>
+                        <th>Chave PIX</th>
+                        <th>Comissão Gerada</th>
+                        <th>Total Pago</th>
+                        <th>Saldo Pendente</th>
+                        <th>Ações</th>
+                    </tr>
+                </thead>
+                <tbody id="fin-embaixadores-table">
+                    <!-- Populado dinamicamente -->
+                </tbody>
+            </table>
+        </div>
+    </main>
+</div>
 
     <!-- Scripts de dados e controle -->
     <script src="../js/db.js"></script>

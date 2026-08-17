@@ -533,17 +533,38 @@
                         sessionStorage.setItem('goianita_login_ok', String(Date.now()));
                         window.location.href = 'dashboard.html';
                     })
-                    .catch(err => {
-                        // Se a conta não existe, sugere o cadastro
-                        if (err.code === 'auth/user-not-found' || err.code === 'auth/invalid-credential') {
-                            if (confirm('Conta não encontrada para este e-mail.\n\nDeseja fazer seu primeiro acesso e criar uma senha?')) {
-                                document.getElementById('section-login').style.display = 'none';
-                                document.getElementById('section-cadastro').style.display = 'block';
-                                document.getElementById('cad-email').value = adminEmail;
-                                document.getElementById('cad-senha').focus();
+                    .catch(async (err) => {
+                        const codigo = err && err.code;
+                        // ATENÇÃO: o Firebase devolve 'auth/invalid-credential' TANTO para conta
+                        // inexistente QUANTO para senha errada (é a proteção contra descoberta de
+                        // e-mails). Tratar esse código como "conta não existe" criava um ciclo sem
+                        // fim: oferecia primeiro acesso → a criação falhava com "e-mail já em uso"
+                        // → voltava ao login → repetia, dando a impressão de que o cadastro nunca
+                        // funcionava. Agora quem decide o caminho é o próprio Firebase.
+                        if (codigo === 'auth/user-not-found' || codigo === 'auth/invalid-credential' ||
+                            codigo === 'auth/wrong-password') {
+
+                            let contaExiste = null; // null = não deu para saber
+                            try {
+                                await window.GoianitaAuth.sendPasswordResetEmail(adminEmail);
+                                contaExiste = true;
+                            } catch (e2) {
+                                if (e2 && e2.code === 'auth/user-not-found') contaExiste = false;
+                            }
+
+                            if (contaExiste === false) {
+                                if (confirm('Não existe conta para ' + adminEmail + '.\n\nDeseja fazer o primeiro acesso e criar sua senha agora?')) {
+                                    mostrarSec('section-cadastro');
+                                    document.getElementById('cad-email').value = adminEmail;
+                                    document.getElementById('cad-senha').focus();
+                                }
+                            } else {
+                                alert('Senha incorreta.\n\nJá existe uma conta para ' + adminEmail +
+                                      ', por isso enviei um link para você definir uma nova senha nesse endereço. Verifique a caixa de entrada e o spam.\n\n' +
+                                      'Se você NÃO tem acesso a esse e-mail, peça a outro administrador para cadastrar o seu e-mail real na tela Administradores.');
                             }
                         } else {
-                            alert('Senha incorreta ou erro de autenticação.\n\nDetalhes: ' + err.message);
+                            alert('Não foi possível entrar.\n\nDetalhes: ' + (err && err.message));
                         }
                         btn.disabled = false;
                         btn.textContent = 'Entrar no Sistema';
@@ -645,13 +666,21 @@
                     sessionStorage.setItem('goianita_role', 'admin');
                     sessionStorage.setItem('goianita_email', email);
                     sessionStorage.removeItem('goianita_cliente_id');
+                    sessionStorage.setItem('goianita_login_ok', String(Date.now()));
                     window.location.href = 'dashboard.html';
                 })
-                .catch(err => {
+                .catch(async (err) => {
                     if (err.code === 'auth/email-already-in-use') {
-                        alert('Este e-mail já possui uma conta cadastrada.\n\nVolte ao login e use sua senha habitual.');
-                        document.getElementById('section-cadastro').style.display = 'none';
-                        document.getElementById('section-login').style.display = 'block';
+                        // Mandar "use sua senha habitual" era inútil: quem chegou até aqui não
+                        // sabe a senha. O caminho que resolve é redefinir.
+                        let enviado = false;
+                        try { await window.GoianitaAuth.sendPasswordResetEmail(email); enviado = true; } catch (e) {}
+                        alert('Já existe uma conta para ' + email + '.' +
+                            (enviado
+                                ? '\n\nEnviei um link para você definir uma nova senha. Verifique a caixa de entrada e o spam.'
+                                : '\n\nNão consegui enviar o link de redefinição para esse endereço.') +
+                            '\n\nSe você não tem acesso a esse e-mail, peça a outro administrador para cadastrar o seu e-mail real na tela Administradores.');
+                        mostrarSec('section-login');
                         document.getElementById('username').value = email;
                         document.getElementById('password').focus();
                     } else if (err.code === 'auth/weak-password') {

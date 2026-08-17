@@ -7,6 +7,7 @@ const DB_KEYS = {
     CLIENTES: 'goianita_consignacao_clientes',
     PRODUTOS: 'goianita_consignacao_produtos',
     PAGAMENTOS: 'goianita_consignacao_pagamentos',
+    EMBAIXADORES: 'goianita_consignacao_embaixadores',
     CONFIG: 'goianita_consignacao_config',
     TOMBSTONES: 'goianita_consignacao_tombstones'
 };
@@ -185,7 +186,7 @@ function removePendingSync(colecao, id) {
 }
 function pendingSyncTotal() {
     const p = getPendingSync();
-    return (p.clientes || []).length + (p.produtos || []).length + (p.pagamentos || []).length;
+    return (p.clientes || []).length + (p.produtos || []).length + (p.pagamentos || []).length + (p.embaixadores || []).length;
 }
 
 // Inicialização de chaves seguras no localStorage
@@ -198,6 +199,9 @@ function initDatabase() {
     }
     if (!localStorage.getItem(DB_KEYS.PAGAMENTOS)) {
         localStorage.setItem(DB_KEYS.PAGAMENTOS, JSON.stringify([]));
+    }
+    if (!localStorage.getItem(DB_KEYS.EMBAIXADORES)) {
+        localStorage.setItem(DB_KEYS.EMBAIXADORES, JSON.stringify([]));
     }
 }
 
@@ -346,6 +350,49 @@ function setupFirestoreSync() {
                 window.dispatchEvent(new Event('goianitaDataChanged'));
                 if(syncCount < 3) checkSync();
             }, err => console.error("Erro no sync de pagamentos:", err));
+
+            // Sincronizar embaixadores
+            window.GoianitaFirestore.collection('embaixadores').onSnapshot(snapshot => {
+                const tomb = tombstonesDe('embaixadores');
+                const firebaseEmbaixadores = [];
+                const idsNaNuvemEmb = new Set();
+                snapshot.forEach(doc => {
+                    const dados = doc.data();
+                    idsNaNuvemEmb.add(doc.id);
+                    if (dados.excluido === true) {
+                        removeTombstone('embaixadores', doc.id);
+                        return;
+                    }
+                    if (tomb.includes(doc.id)) {
+                        if (registroSuperaExclusao('embaixadores', doc.id, dados)) {
+                            removeTombstone('embaixadores', doc.id);
+                            firebaseEmbaixadores.push({ id: doc.id, ...dados });
+                        } else {
+                            const agora = new Date().toISOString();
+                            window.GoianitaFirestore.collection('embaixadores').doc(doc.id)
+                                .set({ excluido: true, excluidoEm: agora, atualizadoEm: agora }, { merge: true })
+                                .catch(() => {});
+                        }
+                        return;
+                    }
+                    firebaseEmbaixadores.push({ id: doc.id, ...dados });
+                });
+
+                const tombAtual = tombstonesDe('embaixadores');
+                const localEmb = JSON.parse(localStorage.getItem(DB_KEYS.EMBAIXADORES) || '[]')
+                    .filter(e => !tombAtual.includes(e.id));
+                const toUpload = localEmb.filter(e => !tombAtual.includes(e.id) && !idsNaNuvemEmb.has(e.id));
+
+                toUpload.forEach(async (e) => {
+                    try { await window.GoianitaFirestore.collection('embaixadores').doc(e.id).set(e, {merge: true}); } catch(err){}
+                });
+
+                const merged = [...firebaseEmbaixadores, ...toUpload];
+                localStorage.setItem(DB_KEYS.EMBAIXADORES, JSON.stringify(merged));
+
+                window.dispatchEvent(new Event('goianitaDataChanged'));
+                if(syncCount < 3) checkSync();
+            }, err => console.error("Erro no sync de embaixadores:", err));
         } else if (!user) {
             console.warn("[Firebase] Usuário não autenticado. Sincronização pausada/não iniciada.");
         }
@@ -602,6 +649,114 @@ async function alinharContadorFornecedor(clienteId, sku) {
 }
 
 const db = {
+    // EMBAIXADORES — Parceiros de Captação (Personal Organizers, Arquitetos, etc.)
+    embaixadores: {
+        getAll: () => JSON.parse(localStorage.getItem(DB_KEYS.EMBAIXADORES) || '[]'),
+        getById: (id) => db.embaixadores.getAll().find(e => e.id === id),
+        getByCupom: (cupom) => db.embaixadores.getAll().find(e => e.cupom && e.cupom.toUpperCase() === (cupom || '').toUpperCase()),
+        save: async (embaixador, skipSync = false) => {
+            const todosEmb = db.embaixadores.getAll();
+
+            // Normaliza o cupom para maiúsculas sem espaços
+            if (embaixador.cupom) {
+                embaixador.cupom = embaixador.cupom.toUpperCase().trim().replace(/\s+/g, '');
+            }
+
+            // ID determinístico baseado no CPF (mesma lógica dos fornecedores)
+            const cpfLimpo = embaixador.cpf ? String(embaixador.cpf).replace(/\D/g, '') : '';
+
+            // Validação de duplicidade de CPF para novos cadastros
+            if (!embaixador.id && cpfLimpo) {
+                const dupCpf = todosEmb.find(e => e.cpf && String(e.cpf).replace(/\D/g, '') === cpfLimpo);
+                if (dupCpf) throw new Error(`Já existe um embaixador cadastrado com o CPF ${embaixador.cpf} (${dupCpf.nome}).`);
+            }
+
+            // Validação de unicidade do cupom
+            if (embaixador.cupom) {
+                const dupCupom = todosEmb.find(e =>
+                    e.cupom && e.cupom.toUpperCase() === embaixador.cupom &&
+                    e.id !== embaixador.id
+                );
+                if (dupCupom) throw new Error(`O cupom "${embaixador.cupom}" já está em uso pelo embaixador ${dupCupom.nome}.`);
+            }
+
+            const idNovo = cpfLimpo ? ('emb_' + cpfLimpo) : ('emb_' + Date.now());
+            removeTombstone('embaixadores', embaixador.id || idNovo);
+
+            if (typeof firebase === 'undefined' || !window.GoianitaFirestore) {
+                const lista = todosEmb;
+                if (embaixador.id) {
+                    const idx = lista.findIndex(e => e.id === embaixador.id);
+                    if (idx !== -1) lista[idx] = { ...lista[idx], ...embaixador };
+                } else {
+                    embaixador.id = idNovo;
+                    embaixador.dataCadastro = new Date().toISOString();
+                    const exist = lista.findIndex(e => e.id === embaixador.id);
+                    if (exist !== -1) lista[exist] = { ...lista[exist], ...embaixador };
+                    else lista.push(embaixador);
+                }
+                localStorage.setItem(DB_KEYS.EMBAIXADORES, JSON.stringify(lista));
+                return embaixador;
+            }
+
+            const docRef = embaixador.id
+                ? window.GoianitaFirestore.collection('embaixadores').doc(embaixador.id)
+                : window.GoianitaFirestore.collection('embaixadores').doc(idNovo);
+
+            const id = docRef.id;
+            const embaixadorFinal = {
+                ...embaixador,
+                id,
+                ativo: embaixador.ativo !== false,
+                dataCadastro: embaixador.dataCadastro || new Date().toISOString(),
+                excluido: false,
+                excluidoEm: null,
+                atualizadoEm: new Date().toISOString()
+            };
+
+            // 1) Grava LOCAL primeiro
+            const localEmb = db.embaixadores.getAll();
+            const idxLocal = localEmb.findIndex(e => e.id === id);
+            if (idxLocal !== -1) localEmb[idxLocal] = embaixadorFinal;
+            else localEmb.push(embaixadorFinal);
+            localStorage.setItem(DB_KEYS.EMBAIXADORES, JSON.stringify(localEmb));
+
+            // 2) Envia ao Firestore com timeout de 6s
+            try {
+                await Promise.race([
+                    docRef.set(embaixadorFinal, { merge: true }),
+                    new Promise((_, reject) => setTimeout(() => reject(new Error('tempo esgotado ao gravar na nuvem')), 6000))
+                ]);
+                removePendingSync('embaixadores', id);
+            } catch (err) {
+                addPendingSync('embaixadores', id);
+                console.warn('[Firebase] Embaixador salvo localmente; será sincronizado automaticamente:', err && err.message);
+            }
+
+            if (!skipSync) db.importExport.syncToGoogleSheets();
+            return embaixadorFinal;
+        },
+        delete: async (id) => {
+            const alvo = db.embaixadores.getById(id);
+            if (!alvo) return;
+            addTombstone('embaixadores', id);
+
+            const lista = db.embaixadores.getAll().filter(e => e.id !== id);
+            localStorage.setItem(DB_KEYS.EMBAIXADORES, JSON.stringify(lista));
+
+            if (typeof firebase !== 'undefined' && window.GoianitaFirestore) {
+                const agora = new Date().toISOString();
+                try {
+                    await window.GoianitaFirestore.collection('embaixadores').doc(id)
+                        .set({ excluido: true, excluidoEm: agora, atualizadoEm: agora }, { merge: true });
+                } catch (err) {
+                    console.error('[Firebase] Erro ao excluir embaixador:', err);
+                }
+            }
+            db.importExport.syncToGoogleSheets();
+        }
+    },
+
     // CLIENTES
     clientes: {
         getAll: () => JSON.parse(localStorage.getItem(DB_KEYS.CLIENTES) || '[]'),
@@ -1007,10 +1162,43 @@ const db = {
             };
         },
 
+        calcularValoresEmbaixador: (embaixadorId) => {
+            const emb = db.embaixadores.getById(embaixadorId);
+            if (!emb) return { produtosCaptados: 0, produtosVendidos: 0, totalFaturado: 0, comissaoTotalGerada: 0, totalPago: 0, saldoPendente: 0 };
+
+            // Produtos vinculados a este embaixador via cupom
+            const produtosCaptados = db.produtos.getAll().filter(p =>
+                p.embaixadorId === embaixadorId ||
+                (p.cupom && emb.cupom && p.cupom.toUpperCase() === emb.cupom.toUpperCase())
+            );
+
+            const produtosVendidos = produtosCaptados.filter(p => p.status === 'Vendido' || p.status === 'Pago');
+            const totalFaturado = produtosVendidos.reduce((acc, p) => acc + (p.precoVenda || 0), 0);
+            const comissaoTotalGerada = produtosVendidos.reduce((acc, p) => {
+                const taxa = p.comissaoEmbaixador != null ? p.comissaoEmbaixador : (emb.comissaoCaptacaoPadrao || 0);
+                return acc + ((p.precoVenda || 0) * taxa / 100);
+            }, 0);
+
+            // Pagamentos já registrados para este embaixador
+            const pagamentosEmb = db.pagamentos.getAll().filter(p => p.embaixadorId === embaixadorId);
+            const totalPago = pagamentosEmb.reduce((acc, p) => acc + (p.valor || 0), 0);
+            const saldoPendente = Math.max(0, comissaoTotalGerada - totalPago);
+
+            return {
+                produtosCaptados: produtosCaptados.length,
+                produtosVendidos: produtosVendidos.length,
+                totalFaturado,
+                comissaoTotalGerada,
+                totalPago,
+                saldoPendente
+            };
+        },
+
         getResumoGeral: () => {
             const clientes = db.clientes.getAll();
             const produtos = db.produtos.getAll();
             const pagamentos = db.pagamentos.getAll();
+            const embaixadores = db.embaixadores.getAll();
 
             const totalEstoqueValor = produtos
                 .filter(p => p.status === 'À Venda')
@@ -1022,11 +1210,36 @@ const db = {
 
             const totalComissaoGoianita = produtos
                 .filter(p => p.status === 'Vendido' || p.status === 'Pago')
-                .reduce((acc, p) => acc + (((p.precoVenda || 0) * (p.comissao || 0)) / 100), 0);
+                .reduce((acc, p) => {
+                    const comissaoLoja = ((p.precoVenda || 0) * (p.comissao || 0)) / 100;
+                    // Se há comissão de embaixador, ela sai da margem da loja
+                    const comissaoEmb = p.comissaoEmbaixador != null
+                        ? ((p.precoVenda || 0) * p.comissaoEmbaixador / 100)
+                        : 0;
+                    return acc + comissaoLoja - comissaoEmb;
+                }, 0);
 
-            const totalPagoFornecedores = pagamentos.reduce((acc, p) => acc + (p.valor || 0), 0);
+            const totalPagoFornecedores = pagamentos
+                .filter(p => !p.embaixadorId)
+                .reduce((acc, p) => acc + (p.valor || 0), 0);
 
-            const saldoPagarFornecedores = (totalVendas - totalComissaoGoianita) - totalPagoFornecedores;
+            const saldoPagarFornecedores = (totalVendas - produtos
+                .filter(p => p.status === 'Vendido' || p.status === 'Pago')
+                .reduce((acc, p) => acc + ((p.precoVenda || 0) * (p.comissao || 0)) / 100, 0)) - totalPagoFornecedores;
+
+            // Estatísticas de embaixadores
+            const embAtivos = embaixadores.filter(e => e.ativo !== false).length;
+            const totalComissaoEmbaixadores = produtos
+                .filter(p => (p.status === 'Vendido' || p.status === 'Pago') && p.embaixadorId)
+                .reduce((acc, p) => {
+                    const emb = db.embaixadores.getById(p.embaixadorId);
+                    const taxa = p.comissaoEmbaixador != null ? p.comissaoEmbaixador : (emb ? (emb.comissaoCaptacaoPadrao || 0) : 0);
+                    return acc + ((p.precoVenda || 0) * taxa / 100);
+                }, 0);
+            const totalPagoEmbaixadores = pagamentos
+                .filter(p => !!p.embaixadorId)
+                .reduce((acc, p) => acc + (p.valor || 0), 0);
+            const saldoPagarEmbaixadores = Math.max(0, totalComissaoEmbaixadores - totalPagoEmbaixadores);
 
             return {
                 totalClientes: clientes.length,
@@ -1036,6 +1249,10 @@ const db = {
                 totalComissaoGoianita,
                 totalPagoFornecedores,
                 saldoPagarFornecedores,
+                embAtivos,
+                totalComissaoEmbaixadores,
+                totalPagoEmbaixadores,
+                saldoPagarEmbaixadores,
                 statusCounts: produtos.reduce((acc, p) => {
                     acc[p.status] = (acc[p.status] || 0) + 1;
                     return acc;
@@ -1145,7 +1362,8 @@ const db = {
             const backup = {
                 clientes: db.clientes.getAll(),
                 produtos: db.produtos.getAll(),
-                pagamentos: db.pagamentos.getAll()
+                pagamentos: db.pagamentos.getAll(),
+                embaixadores: db.embaixadores.getAll()
             };
             return JSON.stringify(backup, null, 2);
         },
@@ -1155,6 +1373,7 @@ const db = {
                 if (data.clientes) localStorage.setItem(DB_KEYS.CLIENTES, JSON.stringify(data.clientes));
                 if (data.produtos) localStorage.setItem(DB_KEYS.PRODUTOS, JSON.stringify(data.produtos));
                 if (data.pagamentos) localStorage.setItem(DB_KEYS.PAGAMENTOS, JSON.stringify(data.pagamentos));
+                if (data.embaixadores) localStorage.setItem(DB_KEYS.EMBAIXADORES, JSON.stringify(data.embaixadores));
                 return { success: true };
             } catch (e) {
                 return { success: false, error: e.message };
@@ -1362,11 +1581,10 @@ const db = {
             localStorage.setItem(DB_KEYS.CLIENTES, JSON.stringify([]));
             localStorage.setItem(DB_KEYS.PRODUTOS, JSON.stringify([]));
             localStorage.setItem(DB_KEYS.PAGAMENTOS, JSON.stringify([]));
+            // Embaixadores são mantidos no zerarTudo — eles não dependem de ciclos de consignação
             localStorage.setItem(DB_KEYS.TOMBSTONES, JSON.stringify({}));
 
-            // 2. MARCA todos os documentos como excluídos (não apaga). Apagar faria cada outro
-            //    aparelho reenviar a sua cópia local e o banco voltaria sozinho, além de
-            //    disparar o vai-e-vem infinito de gravação/exclusão entre as máquinas.
+            // 2. MARCA todos os documentos como excluídos (não apaga).
             if (typeof firebase !== 'undefined' && window.GoianitaFirestore) {
                 const agora = new Date().toISOString();
                 for (const col of ['clientes', 'produtos', 'pagamentos']) {
@@ -1432,7 +1650,8 @@ db.utils.sincronizarPendentes = async () => {
     const colecoes = [
         ['clientes', db.clientes.getAll()],
         ['produtos', db.produtos.getAll()],
-        ['pagamentos', db.pagamentos.getAll()]
+        ['pagamentos', db.pagamentos.getAll()],
+        ['embaixadores', db.embaixadores.getAll()]
     ];
 
     let enviados = 0;
@@ -1498,10 +1717,11 @@ async function goianitaAutoSyncPendentes() {
         const mapa = {
             clientes: db.clientes.getAll(),
             produtos: db.produtos.getAll(),
-            pagamentos: db.pagamentos.getAll()
+            pagamentos: db.pagamentos.getAll(),
+            embaixadores: db.embaixadores.getAll()
         };
         const fila = getPendingSync();
-        for (const col of ['clientes', 'produtos', 'pagamentos']) {
+        for (const col of ['clientes', 'produtos', 'pagamentos', 'embaixadores']) {
             const ids = (fila[col] || []).slice();
             const tomb = tombstonesDe(col);
             for (const id of ids) {
@@ -1529,7 +1749,7 @@ window.goianitaAutoSyncPendentes = goianitaAutoSyncPendentes;
 // merge inofensivo. Tombstones ficam de fora.
 (function semearFilaInicial() {
     try {
-        ['clientes', 'produtos', 'pagamentos'].forEach(col => {
+        ['clientes', 'produtos', 'pagamentos', 'embaixadores'].forEach(col => {
             const tomb = tombstonesDe(col);
             const itens = db[col].getAll();
             itens.forEach(it => { if (it && it.id && !tomb.includes(it.id)) addPendingSync(col, it.id); });

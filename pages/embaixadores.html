@@ -1,0 +1,425 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Embaixadores - Goianita Novo de novo</title>
+    <!-- Firebase SDKs -->
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-storage-compat.js"></script>
+    <link rel="stylesheet" href="../css/style.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        .cupom-badge {
+            display: inline-block;
+            background: linear-gradient(135deg, var(--accent-gold), #c9a227);
+            color: #1a1208;
+            font-weight: 700;
+            font-size: 11px;
+            letter-spacing: 0.06em;
+            padding: 3px 10px;
+            border-radius: 20px;
+            text-transform: uppercase;
+            font-family: 'Courier New', monospace;
+        }
+        .status-ativo { color: var(--status-pago); font-weight: 600; }
+        .status-inativo { color: var(--text-muted); font-weight: 600; }
+        .modal-overlay {
+            display: none;
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.6);
+            z-index: 1000;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+        .modal-overlay.open { display: flex; }
+        .simulador-box {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-sm);
+            padding: 16px;
+            margin-top: 12px;
+            font-size: 13px;
+        }
+        .sim-row { display: flex; justify-content: space-between; padding: 3px 0; }
+        .sim-row.total { border-top: 1px solid var(--border-color); margin-top: 4px; font-weight: 700; }
+    </style>
+</head>
+<body>
+<div class="app-container">
+    <!-- Sidebar Navigation -->
+    <aside class="sidebar">
+        <div class="logo-container">
+            <img src="../logo.png" alt="Logo Goianita" />
+            <div>
+                <span class="logo-text">Goianita Novo de novo</span>
+                <span class="logo-sub">Consignações</span>
+            </div>
+        </div>
+        <nav>
+            <ul class="nav-menu">
+                <li class="nav-item"><a href="../dashboard.html"><i class="fa-solid fa-chart-line"></i> Dashboard</a></li>
+                <li class="nav-item"><a href="clientes.html"><i class="fa-solid fa-users"></i> Clientes / Fornecedores</a></li>
+                <li class="nav-item"><a href="produtos.html"><i class="fa-solid fa-box-open"></i> Produtos Consignados</a></li>
+                <li class="nav-item"><a href="financeiro.html"><i class="fa-solid fa-wallet"></i> Financeiro / Repasses</a></li>
+                <li class="nav-item active"><a href="embaixadores.html"><i class="fa-solid fa-handshake"></i> Embaixadores</a></li>
+                <li class="nav-item"><a href="admins.html"><i class="fa-solid fa-user-shield"></i> Administradores</a></li>
+                <li class="nav-item"><a href="regulamento.html"><i class="fa-solid fa-file-contract"></i> Regulamento</a></li>
+            </ul>
+        </nav>
+        <div class="sidebar-footer">
+            <div class="user-badge">
+                <div class="user-avatar" id="sidebar-avatar">CL</div>
+                <div class="user-info">
+                    <span class="user-name" id="sidebar-nome">Admin</span>
+                    <span class="user-role">Administrador</span>
+                </div>
+            </div>
+            <a href="#" id="btn-logout" class="btn btn-secondary" style="width: 100%; margin-top: 16px; padding: 8px; font-size: 13px; color: #ffffff; border-color: rgba(255,255,255,0.2); background-color: rgba(255,255,255,0.08); display: flex; align-items: center; justify-content: center; gap: 8px;">
+                <i class="fa-solid fa-right-from-bracket"></i> Sair
+            </a>
+        </div>
+    </aside>
+
+    <!-- Main Content -->
+    <main class="main-content">
+        <header class="page-header">
+            <div>
+                <h1 class="page-title"><i class="fa-solid fa-handshake" style="color:var(--accent-gold);margin-right:8px;"></i>Embaixadores</h1>
+                <p class="page-subtitle">Parceiros de captação (Personal Organizers, Arquitetos e Indicadores). Gerencie cupons e comissões.</p>
+            </div>
+            <button id="btn-novo-embaixador" class="btn btn-primary">
+                <i class="fa-solid fa-plus"></i> Novo Embaixador
+            </button>
+        </header>
+
+        <!-- KPIs -->
+        <section class="card-grid" id="emb-kpis">
+            <div class="kpi-card">
+                <div class="kpi-title">Embaixadores Ativos</div>
+                <div class="kpi-value" id="kpi-ativos">0</div>
+                <div class="kpi-desc">Parceiros com cupom ativo</div>
+            </div>
+            <div class="kpi-card" style="border-left: 4px solid var(--accent-gold);">
+                <div class="kpi-title">Comissões Geradas</div>
+                <div class="kpi-value" id="kpi-comissoes">R$ 0,00</div>
+                <div class="kpi-desc">Total acumulado de captação</div>
+            </div>
+            <div class="kpi-card" style="border-left: 4px solid var(--status-pago);">
+                <div class="kpi-title">Total Pago</div>
+                <div class="kpi-value" id="kpi-pago">R$ 0,00</div>
+                <div class="kpi-desc">Repasses já efetuados via PIX</div>
+            </div>
+            <div class="kpi-card" style="border-left: 4px solid var(--status-devolucao);">
+                <div class="kpi-title">Repasses Pendentes</div>
+                <div class="kpi-value" id="kpi-pendente">R$ 0,00</div>
+                <div class="kpi-desc">Saldo aguardando transferência</div>
+            </div>
+        </section>
+
+        <!-- Busca -->
+        <div class="filter-panel">
+            <input type="text" id="search-emb" class="search-input" placeholder="Buscar por nome, cupom ou CPF...">
+            <select id="filter-ativo" class="filter-select">
+                <option value="">Todos os Status</option>
+                <option value="ativo">Somente Ativos</option>
+                <option value="inativo">Somente Inativos</option>
+            </select>
+        </div>
+
+        <!-- Tabela -->
+        <div class="table-container">
+            <div class="table-header-bar">
+                <h3>Cadastro de Embaixadores / Parceiros de Captação</h3>
+            </div>
+            <table class="premium-table">
+                <thead>
+                    <tr>
+                        <th>Cupom</th>
+                        <th>Nome</th>
+                        <th>CPF / Contato</th>
+                        <th>Comissão Padrão</th>
+                        <th>Captados</th>
+                        <th>Saldo Pendente</th>
+                        <th>Status</th>
+                        <th>Ações</th>
+                    </tr>
+                </thead>
+                <tbody id="emb-table-body">
+                    <tr><td colspan="8" style="text-align:center;padding:32px;color:var(--text-muted);">Carregando...</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </main>
+</div>
+
+<!-- Modal Novo / Editar Embaixador -->
+<div id="modal-embaixador" class="modal-overlay">
+    <div class="form-card" style="width:100%;max-width:620px;max-height:90vh;overflow-y:auto;">
+        <div class="page-header" style="margin-bottom:20px;">
+            <h3 id="modal-title">Novo Embaixador</h3>
+            <button onclick="fecharModal()" class="btn btn-secondary" style="padding:6px 12px;">✕</button>
+        </div>
+
+        <form id="form-embaixador" novalidate>
+            <input type="hidden" id="emb-id">
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
+                <div class="form-group" style="grid-column:1/-1;">
+                    <label class="form-label">Nome Completo *</label>
+                    <input type="text" id="emb-nome" class="form-control" placeholder="Ex: Carolina Arquiteta" required>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">CPF *</label>
+                    <input type="text" id="emb-cpf" class="form-control" placeholder="000.000.000-00" maxlength="14" required>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Telefone / WhatsApp</label>
+                    <input type="text" id="emb-telefone" class="form-control" placeholder="(62) 99999-0000">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">E-mail</label>
+                    <input type="email" id="emb-email" class="form-control" placeholder="parceiro@email.com">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Empresa / Escritório</label>
+                    <input type="text" id="emb-contato" class="form-control" placeholder="Ex: Carol Interiores Ltda">
+                </div>
+                <div class="form-group" style="grid-column:1/-1;">
+                    <label class="form-label">Endereço</label>
+                    <input type="text" id="emb-endereco" class="form-control" placeholder="Av. T-63, Setor Bueno, Goiânia - GO">
+                </div>
+
+                <hr style="grid-column:1/-1;border-color:var(--border-color);margin:4px 0;">
+
+                <div class="form-group">
+                    <label class="form-label">Cupom Único * <span style="font-size:11px;color:var(--text-muted);">(sem espaços)</span></label>
+                    <input type="text" id="emb-cupom" class="form-control" placeholder="Ex: CAROL10" style="text-transform:uppercase;font-family:monospace;font-weight:700;" required>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Comissão de Captação Padrão (%)</label>
+                    <input type="number" id="emb-comissao" class="form-control" value="10" min="0" max="50" step="0.5">
+                </div>
+
+                <hr style="grid-column:1/-1;border-color:var(--border-color);margin:4px 0;">
+
+                <div class="form-group">
+                    <label class="form-label">Tipo de Chave PIX</label>
+                    <select id="emb-pix-tipo" class="form-control">
+                        <option value="CPF">CPF</option>
+                        <option value="E-mail">E-mail</option>
+                        <option value="Telefone">Telefone</option>
+                        <option value="Aleatória">Chave Aleatória</option>
+                        <option value="CNPJ">CNPJ</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Chave PIX</label>
+                    <input type="text" id="emb-pix-chave" class="form-control" placeholder="Chave PIX para repasse">
+                </div>
+
+                <div class="form-group" style="grid-column:1/-1;">
+                    <label class="form-label">Status</label>
+                    <select id="emb-ativo" class="form-control">
+                        <option value="true">Ativo</option>
+                        <option value="false">Inativo</option>
+                    </select>
+                </div>
+            </div>
+
+            <div id="modal-erro" style="display:none;background:rgba(220,53,69,0.1);border:1px solid rgba(220,53,69,0.3);color:#dc3545;padding:10px 14px;border-radius:var(--radius-sm);margin-top:12px;font-size:13px;"></div>
+
+            <div class="form-actions" style="margin-top:20px;">
+                <button type="button" onclick="fecharModal()" class="btn btn-secondary">Cancelar</button>
+                <button type="submit" id="btn-salvar-emb" class="btn btn-primary"><i class="fa-solid fa-save"></i> Salvar Embaixador</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<script src="../js/db.js"></script>
+<script src="../js/app.js"></script>
+<script>
+    let embaixadoresData = [];
+
+    function fmt(v) {
+        return 'R$ ' + (v || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 });
+    }
+
+    function renderKPIs() {
+        const todos = window.GoianitaDB.embaixadores.getAll();
+        const ativos = todos.filter(e => e.ativo !== false).length;
+        let comTotal = 0, pagoTotal = 0, pendTotal = 0;
+        todos.forEach(e => {
+            const v = window.GoianitaDB.utils.calcularValoresEmbaixador(e.id);
+            comTotal += v.comissaoTotalGerada;
+            pagoTotal += v.totalPago;
+            pendTotal += v.saldoPendente;
+        });
+        document.getElementById('kpi-ativos').textContent = ativos;
+        document.getElementById('kpi-comissoes').textContent = fmt(comTotal);
+        document.getElementById('kpi-pago').textContent = fmt(pagoTotal);
+        document.getElementById('kpi-pendente').textContent = fmt(pendTotal);
+    }
+
+    function renderTabela() {
+        const q = (document.getElementById('search-emb').value || '').toLowerCase();
+        const fa = document.getElementById('filter-ativo').value;
+        let lista = window.GoianitaDB.embaixadores.getAll();
+
+        if (q) lista = lista.filter(e =>
+            (e.nome||'').toLowerCase().includes(q) ||
+            (e.cupom||'').toLowerCase().includes(q) ||
+            (e.cpf||'').includes(q)
+        );
+        if (fa === 'ativo') lista = lista.filter(e => e.ativo !== false);
+        if (fa === 'inativo') lista = lista.filter(e => e.ativo === false);
+
+        embaixadoresData = lista;
+        const tbody = document.getElementById('emb-table-body');
+
+        if (!lista.length) {
+            tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:32px;color:var(--text-muted);">Nenhum embaixador encontrado.</td></tr>';
+            return;
+        }
+
+        tbody.innerHTML = lista.map(e => {
+            const vals = window.GoianitaDB.utils.calcularValoresEmbaixador(e.id);
+            const statusHtml = e.ativo !== false
+                ? '<span class="status-ativo"><i class="fa-solid fa-circle-check"></i> Ativo</span>'
+                : '<span class="status-inativo"><i class="fa-solid fa-circle-xmark"></i> Inativo</span>';
+            return `<tr>
+                <td><span class="cupom-badge">${e.cupom || '—'}</span></td>
+                <td style="font-weight:600;">${e.nome}</td>
+                <td>
+                    <div style="font-size:12px;">${e.cpf || '—'}</div>
+                    <div style="font-size:11px;color:var(--text-muted);">${e.telefone || ''}</div>
+                </td>
+                <td style="text-align:center;">${e.comissaoCaptacaoPadrao || 0}%</td>
+                <td style="text-align:center;">${vals.produtosCaptados}</td>
+                <td style="font-weight:600;color:${vals.saldoPendente > 0 ? 'var(--status-devolucao)' : 'var(--text-muted)'};">${fmt(vals.saldoPendente)}</td>
+                <td>${statusHtml}</td>
+                <td>
+                    <div style="display:flex;gap:6px;">
+                        <a href="embaixador-detalhe.html?id=${e.id}" class="btn btn-secondary" style="padding:4px 10px;font-size:12px;" title="Ver detalhes"><i class="fa-solid fa-eye"></i></a>
+                        <button onclick="abrirEdicao('${e.id}')" class="btn btn-secondary" style="padding:4px 10px;font-size:12px;" title="Editar"><i class="fa-solid fa-pen"></i></button>
+                        <button onclick="excluirEmbaixador('${e.id}')" class="btn btn-secondary" style="padding:4px 10px;font-size:12px;border-color:var(--status-devolucao);color:var(--status-devolucao);" title="Excluir"><i class="fa-solid fa-trash"></i></button>
+                    </div>
+                </td>
+            </tr>`;
+        }).join('');
+    }
+
+    function abrirModal() {
+        document.getElementById('modal-title').textContent = 'Novo Embaixador';
+        document.getElementById('form-embaixador').reset();
+        document.getElementById('emb-id').value = '';
+        document.getElementById('emb-comissao').value = 10;
+        document.getElementById('emb-ativo').value = 'true';
+        document.getElementById('modal-erro').style.display = 'none';
+        document.getElementById('modal-embaixador').classList.add('open');
+    }
+
+    function abrirEdicao(id) {
+        const emb = window.GoianitaDB.embaixadores.getById(id);
+        if (!emb) return;
+        document.getElementById('modal-title').textContent = 'Editar Embaixador';
+        document.getElementById('emb-id').value = emb.id;
+        document.getElementById('emb-nome').value = emb.nome || '';
+        document.getElementById('emb-cpf').value = emb.cpf || '';
+        document.getElementById('emb-telefone').value = emb.telefone || '';
+        document.getElementById('emb-email').value = emb.email || '';
+        document.getElementById('emb-contato').value = emb.contato || '';
+        document.getElementById('emb-endereco').value = emb.endereco || '';
+        document.getElementById('emb-cupom').value = emb.cupom || '';
+        document.getElementById('emb-comissao').value = emb.comissaoCaptacaoPadrao || 10;
+        document.getElementById('emb-pix-tipo').value = emb.chavePixType || 'CPF';
+        document.getElementById('emb-pix-chave').value = emb.chavePix || '';
+        document.getElementById('emb-ativo').value = emb.ativo !== false ? 'true' : 'false';
+        document.getElementById('modal-erro').style.display = 'none';
+        document.getElementById('modal-embaixador').classList.add('open');
+    }
+
+    function fecharModal() {
+        document.getElementById('modal-embaixador').classList.remove('open');
+    }
+
+    async function excluirEmbaixador(id) {
+        const emb = window.GoianitaDB.embaixadores.getById(id);
+        if (!emb) return;
+        if (!confirm(`Tem certeza que deseja excluir o embaixador "${emb.nome}" (Cupom: ${emb.cupom})?\n\nOs produtos já vinculados a este cupom manterão o vínculo histórico.`)) return;
+        try {
+            await window.GoianitaDB.embaixadores.delete(id);
+            renderKPIs();
+            renderTabela();
+        } catch (e) {
+            alert('Erro ao excluir: ' + e.message);
+        }
+    }
+
+    document.getElementById('btn-novo-embaixador').addEventListener('click', abrirModal);
+
+    document.getElementById('form-embaixador').addEventListener('submit', async function(ev) {
+        ev.preventDefault();
+        const erroEl = document.getElementById('modal-erro');
+        erroEl.style.display = 'none';
+        const btn = document.getElementById('btn-salvar-emb');
+        const orig = btn.innerHTML;
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Gravando...';
+
+        try {
+            const emb = {
+                id: document.getElementById('emb-id').value || undefined,
+                nome: document.getElementById('emb-nome').value.trim(),
+                cpf: document.getElementById('emb-cpf').value.trim(),
+                telefone: document.getElementById('emb-telefone').value.trim(),
+                email: document.getElementById('emb-email').value.trim(),
+                contato: document.getElementById('emb-contato').value.trim(),
+                endereco: document.getElementById('emb-endereco').value.trim(),
+                cupom: document.getElementById('emb-cupom').value.trim().toUpperCase(),
+                comissaoCaptacaoPadrao: parseFloat(document.getElementById('emb-comissao').value) || 0,
+                chavePixType: document.getElementById('emb-pix-tipo').value,
+                chavePix: document.getElementById('emb-pix-chave').value.trim(),
+                ativo: document.getElementById('emb-ativo').value === 'true'
+            };
+
+            if (!emb.nome || !emb.cpf || !emb.cupom) {
+                throw new Error('Nome, CPF e Cupom são obrigatórios.');
+            }
+
+            await window.GoianitaDB.embaixadores.save(emb);
+            fecharModal();
+            renderKPIs();
+            renderTabela();
+        } catch(e) {
+            erroEl.textContent = e.message;
+            erroEl.style.display = 'block';
+        } finally {
+            btn.disabled = false;
+            btn.innerHTML = orig;
+        }
+    });
+
+    document.getElementById('search-emb').addEventListener('input', renderTabela);
+    document.getElementById('filter-ativo').addEventListener('change', renderTabela);
+
+    // Fechar modal clicando fora
+    document.getElementById('modal-embaixador').addEventListener('click', function(e) {
+        if (e.target === this) fecharModal();
+    });
+
+    // Atualizar ao receber dados do Firebase
+    window.addEventListener('goianitaDataChanged', () => {
+        renderKPIs();
+        renderTabela();
+    });
+
+    renderKPIs();
+    renderTabela();
+</script>
+</body>
+</html>

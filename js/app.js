@@ -702,6 +702,16 @@ function renderDashboard() {
                 <div class="kpi-value">${formatCurrency(resumo.saldoPagarFornecedores)}</div>
                 <div class="kpi-desc">Pendente aos fornecedores</div>
             </div>
+            <div class="kpi-card" style="border-left: 4px solid var(--accent-gold);">
+                <div class="kpi-title"><i class="fa-solid fa-handshake"></i> Embaixadores</div>
+                <div class="kpi-value">${resumo.embAtivos || 0}</div>
+                <div class="kpi-desc"><a href="pages/embaixadores.html" style="color:var(--accent-gold);">Ver painel de embaixadores</a></div>
+            </div>
+            <div class="kpi-card" style="border-left: 4px solid #e6a800;">
+                <div class="kpi-title">Repasses a Embaixadores</div>
+                <div class="kpi-value">${formatCurrency(resumo.saldoPagarEmbaixadores || 0)}</div>
+                <div class="kpi-desc">Comissões de captação pendentes</div>
+            </div>
         `;
     }
 
@@ -1597,6 +1607,13 @@ function renderProdutoNovo() {
                 }
             });
             
+            // Embaixador / Cupom de Captação
+            const embSel = document.getElementById('prod-embaixador');
+            const embaixadorId = embSel ? (embSel.value || null) : null;
+            const embaixadorObj = embaixadorId && window.GoianitaDB
+                ? window.GoianitaDB.embaixadores.getById(embaixadorId)
+                : null;
+
             const novoProduto = {
                 nome: document.getElementById('prod-nome').value,
                 descricao: document.getElementById('prod-desc').value,
@@ -1615,7 +1632,19 @@ function renderProdutoNovo() {
                 comissao: comissao,
                 clienteId: selectCliente.value,
                 status: document.getElementById('prod-status').value,
-                obsInternas: document.getElementById('prod-obs').value
+                obsInternas: document.getElementById('prod-obs').value,
+                // Campos de captação (opcionais)
+                embaixadorId: embaixadorId || null,
+                cupom: embaixadorObj ? embaixadorObj.cupom : null,
+                comissaoEmbaixador: embaixadorId
+                    ? (parseFloat((document.getElementById('prod-comissao-emb') || {}).value) || (embaixadorObj ? (embaixadorObj.comissaoCaptacaoPadrao || 0) : 0))
+                    : null,
+                valorComissaoEmbaixador: embaixadorId
+                    ? (() => {
+                        const taxa = parseFloat((document.getElementById('prod-comissao-emb') || {}).value) || (embaixadorObj ? (embaixadorObj.comissaoCaptacaoPadrao || 0) : 0);
+                        return (precoVenda * taxa) / 100;
+                    })()
+                    : null
             };
             
             // Exibir loading ou desativar botão
@@ -2460,6 +2489,30 @@ function renderFinanceiro() {
                 </tr>
             `;
         }).join('');
+    }
+
+    // Seção de Embaixadores — Repasses de Captação
+    const embTableBody = document.getElementById('fin-embaixadores-table');
+    if (embTableBody) {
+        const embaixadores = window.GoianitaDB.embaixadores.getAll();
+        if (!embaixadores.length) {
+            embTableBody.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:24px;color:var(--text-muted);">Nenhum embaixador cadastrado. <a href="embaixadores.html" style="color:var(--accent-gold);">Cadastrar agora</a></td></tr>';
+        } else {
+            embTableBody.innerHTML = embaixadores.map(e => {
+                const vals = window.GoianitaDB.utils.calcularValoresEmbaixador(e.id);
+                return `<tr>
+                    <td>
+                        <strong>${esc(e.nome)}</strong>
+                        <div style="font-size:11px;color:var(--text-muted);">${esc(e.cupom || '')}</div>
+                    </td>
+                    <td>${esc(e.chavePixType || '')}: <code>${esc(e.chavePix || '')}</code></td>
+                    <td>${formatCurrency(vals.comissaoTotalGerada)}</td>
+                    <td>${formatCurrency(vals.totalPago)}</td>
+                    <td><strong style="color: ${vals.saldoPendente > 0 ? 'var(--status-devolucao)' : 'var(--text-muted)'}">${formatCurrency(vals.saldoPendente)}</strong></td>
+                    <td><a href="embaixador-detalhe.html?id=${encodeURIComponent(e.id)}" class="btn btn-secondary" style="padding:6px 12px;font-size:12px;">Ver Extrato</a></td>
+                </tr>`;
+            }).join('');
+        }
     }
 
     // Ações de backup/exportação
